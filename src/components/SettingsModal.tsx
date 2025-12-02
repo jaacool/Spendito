@@ -21,10 +21,18 @@ interface BankConnectionStatus {
   connectionId?: string;
 }
 
+interface PayPalStatus {
+  configured: boolean;
+  connected: boolean;
+  message?: string;
+}
+
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { uiScale, setUIScale } = useSettings();
   const [connectionStatus, setConnectionStatus] = useState<BankConnectionStatus | null>(null);
+  const [paypalStatus, setPaypalStatus] = useState<PayPalStatus | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isPaypalLoading, setIsPaypalLoading] = useState(false);
   const [showBankForm, setShowBankForm] = useState(false);
   const [showPin, setShowPin] = useState(false);
   
@@ -41,6 +49,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   useEffect(() => {
     if (isOpen) {
       loadConnectionStatus();
+      loadPayPalStatus();
     }
   }, [isOpen]);
 
@@ -51,6 +60,49 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     } catch (error) {
       console.error('Failed to load connection status:', error);
     }
+  };
+
+  const loadPayPalStatus = async () => {
+    try {
+      const status = await backendApiService.getPayPalStatus();
+      setPaypalStatus(status);
+    } catch (error) {
+      console.error('Failed to load PayPal status:', error);
+    }
+  };
+
+  const handleSyncPayPal = async () => {
+    setIsPaypalLoading(true);
+    try {
+      const result = await backendApiService.syncPayPal();
+      Alert.alert(
+        'PayPal Sync',
+        `${result.transactionsAdded} neue Transaktionen importiert!`
+      );
+      await loadPayPalStatus();
+    } catch (error: any) {
+      Alert.alert('Fehler', error.message || 'PayPal Sync fehlgeschlagen');
+    } finally {
+      setIsPaypalLoading(false);
+    }
+  };
+
+  const handleDisconnectPayPal = async () => {
+    Alert.alert(
+      'PayPal trennen',
+      'Möchtest du PayPal wirklich trennen? Alle PayPal-Transaktionen werden gelöscht.',
+      [
+        { text: 'Abbrechen', style: 'cancel' },
+        {
+          text: 'Trennen',
+          style: 'destructive',
+          onPress: async () => {
+            await backendApiService.disconnectPayPal();
+            await loadPayPalStatus();
+          },
+        },
+      ]
+    );
   };
 
   const handleConnectBank = () => {
@@ -383,17 +435,49 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </View>
               )}
 
-              {/* PayPal - Coming Soon */}
-              <View style={[styles.connectionCard, { opacity: 0.5 }]}>
+              {/* PayPal Connection */}
+              <View style={styles.connectionCard}>
                 <View style={styles.connectionInfo}>
                   <View style={[styles.connectionIcon, { backgroundColor: '#00308715' }]}>
                     <Wallet size={18} color="#003087" />
                   </View>
                   <View style={styles.connectionDetails}>
                     <Text style={styles.connectionName}>PayPal</Text>
-                    <Text style={styles.disconnectedText}>Demnächst verfügbar</Text>
+                    {paypalStatus?.connected ? (
+                      <View style={styles.connectedBadge}>
+                        <CheckCircle2 size={10} color="#22c55e" />
+                        <Text style={styles.connectedText}>Verbunden</Text>
+                      </View>
+                    ) : paypalStatus?.configured ? (
+                      <Text style={styles.disconnectedText}>Bereit zum Sync</Text>
+                    ) : (
+                      <Text style={styles.disconnectedText}>Nicht konfiguriert</Text>
+                    )}
                   </View>
                 </View>
+                {paypalStatus?.configured && (
+                  <View style={styles.paypalButtons}>
+                    <Pressable 
+                      style={[styles.syncButton, isPaypalLoading && styles.buttonDisabled]}
+                      onPress={handleSyncPayPal}
+                      disabled={isPaypalLoading}
+                    >
+                      {isPaypalLoading ? (
+                        <ActivityIndicator size="small" color="#003087" />
+                      ) : (
+                        <>
+                          <RefreshCw size={12} color="#003087" />
+                          <Text style={[styles.connectButtonText, { color: '#003087' }]}>Sync</Text>
+                        </>
+                      )}
+                    </Pressable>
+                    {paypalStatus?.connected && (
+                      <Pressable style={styles.disconnectButton} onPress={handleDisconnectPayPal}>
+                        <Unlink size={14} color="#ef4444" />
+                      </Pressable>
+                    )}
+                  </View>
+                )}
               </View>
             </View>
 
@@ -814,5 +898,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6b7280',
     fontFamily: 'monospace',
+  },
+  // PayPal styles
+  paypalButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  syncButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#e8f4fd',
+    borderRadius: 6,
   },
 });

@@ -249,6 +249,96 @@ class BackendApiService {
 
     await AsyncStorage.removeItem(STORAGE_KEYS.SESSION_ID);
   }
+
+  // ============================================
+  // PayPal Methods
+  // ============================================
+
+  /**
+   * Check PayPal connection status
+   */
+  async getPayPalStatus(): Promise<{ configured: boolean; connected: boolean; message?: string }> {
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/paypal/status`);
+      return response.json();
+    } catch {
+      return { configured: false, connected: false };
+    }
+  }
+
+  /**
+   * Sync PayPal transactions
+   */
+  async syncPayPal(startDate?: string, endDate?: string): Promise<{ success: boolean; transactionsAdded: number; error?: string }> {
+    await this.initialize();
+
+    const response = await fetch(`${BACKEND_URL}/api/paypal/sync/${this.userId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ startDate, endDate }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'PayPal sync failed');
+    }
+
+    return data;
+  }
+
+  /**
+   * Get PayPal transactions
+   */
+  async getPayPalTransactions(fromDate?: string, toDate?: string): Promise<Transaction[]> {
+    await this.initialize();
+    await categorizationService.initialize();
+
+    let url = `${BACKEND_URL}/api/paypal/transactions/${this.userId}`;
+    const params = new URLSearchParams();
+    if (fromDate) params.append('from', fromDate);
+    if (toDate) params.append('to', toDate);
+    if (params.toString()) url += `?${params.toString()}`;
+
+    const response = await fetch(url);
+    const data: BackendTransaction[] = await response.json();
+
+    return data.map((tx) => {
+      const isIncome = tx.amount > 0;
+      const { category, confidence } = tx.category 
+        ? { category: tx.category as any, confidence: 1 }
+        : categorizationService.categorize(tx.description || tx.counterparty_name || '', tx.amount);
+
+      return {
+        id: tx.id,
+        date: new Date(tx.date).toISOString(),
+        amount: tx.amount,
+        type: isIncome ? 'income' : 'expense',
+        category,
+        description: tx.description || tx.counterparty_name || 'PayPal',
+        counterparty: tx.counterparty_name || 'PayPal',
+        isManuallyCategized: false,
+        confidence,
+        sourceAccount: 'paypal',
+        externalId: tx.id,
+      } as Transaction;
+    });
+  }
+
+  /**
+   * Disconnect PayPal
+   */
+  async disconnectPayPal(): Promise<void> {
+    await this.initialize();
+    
+    try {
+      await fetch(`${BACKEND_URL}/api/paypal/disconnect/${this.userId}`, {
+        method: 'DELETE',
+      });
+    } catch {
+      // Ignore errors
+    }
+  }
 }
 
 export const backendApiService = new BackendApiService();

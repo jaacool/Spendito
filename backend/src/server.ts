@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import db from './database.js';
 import { v4 as uuidv4 } from 'uuid';
 import fintsRoutes from './fints-routes.js';
+import paypalRoutes from './paypal-routes.js';
 
 dotenv.config();
 
@@ -20,6 +21,9 @@ app.get('/health', (req, res) => {
 
 // FinTS routes
 app.use('/api/fints', fintsRoutes);
+
+// PayPal routes
+app.use('/api/paypal', paypalRoutes);
 
 // ============================================
 // Bank Connection Endpoints
