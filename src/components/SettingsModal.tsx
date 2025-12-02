@@ -105,13 +105,21 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     );
   };
 
-  const handleConnectBank = () => {
+  const handleConnectBank = async () => {
     setShowBankForm(true);
     setConnectionStep('form');
-    setBankId('');
-    setLoginName('');
     setPin('');
     setStatusMessage('');
+    
+    // Load saved credentials if available
+    const savedCredentials = await backendApiService.getSavedBankCredentials();
+    if (savedCredentials) {
+      setBankId(savedCredentials.bankId);
+      setLoginName(savedCredentials.loginName);
+    } else {
+      setBankId('');
+      setLoginName('');
+    }
   };
 
   const handleSubmitBankForm = async () => {

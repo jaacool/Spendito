@@ -16,6 +16,9 @@ const STORAGE_KEYS = {
   USER_ID: 'backend_user_id',
   SESSION_ID: 'backend_session_id',
   CONNECTION_ID: 'backend_connection_id',
+  // Bank credentials (encrypted in production)
+  BANK_ID: 'bank_blz',
+  BANK_LOGIN: 'bank_login_name',
 };
 
 export interface BankAccount {
@@ -102,8 +105,26 @@ class BackendApiService {
     // Store session and connection IDs
     await AsyncStorage.setItem(STORAGE_KEYS.SESSION_ID, data.sessionId);
     await AsyncStorage.setItem(STORAGE_KEYS.CONNECTION_ID, data.connectionId);
+    
+    // Save bank credentials (BLZ and login name) for future syncs
+    // Note: PIN is NOT saved for security reasons
+    await AsyncStorage.setItem(STORAGE_KEYS.BANK_ID, bankId);
+    await AsyncStorage.setItem(STORAGE_KEYS.BANK_LOGIN, loginName);
 
     return data;
+  }
+
+  /**
+   * Get saved bank credentials (BLZ and login name only, no PIN)
+   */
+  async getSavedBankCredentials(): Promise<{ bankId: string; loginName: string } | null> {
+    const bankId = await AsyncStorage.getItem(STORAGE_KEYS.BANK_ID);
+    const loginName = await AsyncStorage.getItem(STORAGE_KEYS.BANK_LOGIN);
+    
+    if (bankId && loginName) {
+      return { bankId, loginName };
+    }
+    return null;
   }
 
   /**
