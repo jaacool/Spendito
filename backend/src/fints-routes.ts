@@ -91,7 +91,27 @@ router.post('/init', async (req, res) => {
 
   } catch (error: any) {
     console.error('[FinTS] Init error:', error);
-    res.status(500).json({ error: error.message || 'Failed to initialize connection' });
+    console.error('[FinTS] Error stack:', error.stack);
+    
+    // Provide more helpful error messages
+    let errorMessage = error.message || 'Unbekannter Fehler';
+    
+    if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('ECONNREFUSED')) {
+      errorMessage = 'Bankserver nicht erreichbar. Bitte prüfe die BLZ.';
+    } else if (errorMessage.includes('timeout') || errorMessage.includes('ETIMEDOUT')) {
+      errorMessage = 'Zeitüberschreitung beim Verbinden mit der Bank.';
+    } else if (errorMessage.includes('9800') || errorMessage.includes('9010')) {
+      errorMessage = 'Anmeldedaten falsch. Bitte prüfe Login und PIN.';
+    } else if (errorMessage.includes('9930') || errorMessage.includes('9931')) {
+      errorMessage = 'Konto gesperrt oder zu viele Fehlversuche.';
+    } else if (errorMessage.includes('certificate')) {
+      errorMessage = 'SSL-Zertifikatsfehler beim Bankserver.';
+    }
+    
+    res.status(500).json({ 
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 

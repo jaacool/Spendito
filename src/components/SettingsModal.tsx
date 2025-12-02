@@ -128,27 +128,65 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       return;
     }
 
+    // Validate BLZ format
+    if (!/^\d{8}$/.test(bankId)) {
+      Alert.alert('Fehler', 'Die BLZ muss genau 8 Ziffern haben.');
+      return;
+    }
+
     setIsLoading(true);
     setStatusMessage('Verbinde mit Bank...');
 
     try {
+      console.log('[Bank] Starting connection with BLZ:', bankId);
       const result = await backendApiService.initBankConnection(bankId, loginName, pin);
+      console.log('[Bank] Connection result:', JSON.stringify(result, null, 2));
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
       
       setSessionId(result.sessionId);
       
       if (result.tanMethods && result.tanMethods.length > 0) {
+        console.log('[Bank] TAN methods available:', result.tanMethods.length);
         setTanMethods(result.tanMethods);
         setConnectionStep('tan-select');
         setStatusMessage('Wähle TAN-Verfahren');
-      } else if (result.accounts) {
+      } else if (result.accounts && result.accounts.length > 0) {
+        console.log('[Bank] Accounts found:', result.accounts.length);
         setAccounts(result.accounts);
         setConnectionStep('done');
         setStatusMessage('Verbindung erfolgreich!');
         await loadConnectionStatus();
+      } else {
+        // No TAN methods and no accounts - something unexpected
+        console.log('[Bank] Unexpected result - no TAN methods or accounts');
+        setStatusMessage('Warte auf Bankserver...');
+        Alert.alert(
+          'Hinweis',
+          'Die Bank hat noch keine Konten zurückgegeben. Möglicherweise ist eine TAN-Freigabe in deiner Banking-App erforderlich.',
+          [{ text: 'OK' }]
+        );
       }
     } catch (error: any) {
-      Alert.alert('Fehler', error.message || 'Verbindung fehlgeschlagen');
-      setStatusMessage('');
+      console.error('[Bank] Connection error:', error);
+      const errorMessage = error.message || 'Unbekannter Fehler';
+      
+      // Provide more helpful error messages
+      let userMessage = errorMessage;
+      if (errorMessage.includes('fetch') || errorMessage.includes('network')) {
+        userMessage = 'Netzwerkfehler. Bitte prüfe deine Internetverbindung.';
+      } else if (errorMessage.includes('timeout')) {
+        userMessage = 'Zeitüberschreitung. Der Bankserver antwortet nicht.';
+      } else if (errorMessage.includes('401') || errorMessage.includes('auth')) {
+        userMessage = 'Anmeldedaten falsch. Bitte prüfe BLZ, Login und PIN.';
+      } else if (errorMessage.includes('500')) {
+        userMessage = 'Serverfehler. Bitte versuche es später erneut.';
+      }
+      
+      Alert.alert('Verbindung fehlgeschlagen', userMessage);
+      setStatusMessage('Fehler: ' + userMessage);
     } finally {
       setIsLoading(false);
     }

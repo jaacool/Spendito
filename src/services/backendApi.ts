@@ -85,26 +85,48 @@ class BackendApiService {
   ): Promise<InitResult> {
     await this.initialize();
 
-    const response = await fetch(`${BACKEND_URL}/api/fints/init`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: this.userId,
-        bankId,
-        loginName,
-        pin,
-      }),
-    });
+    console.log('[BackendAPI] Initiating bank connection to:', BACKEND_URL);
+    
+    let response: Response;
+    try {
+      response = await fetch(`${BACKEND_URL}/api/fints/init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: this.userId,
+          bankId,
+          loginName,
+          pin,
+        }),
+      });
+    } catch (fetchError: any) {
+      console.error('[BackendAPI] Fetch error:', fetchError);
+      throw new Error(`Netzwerkfehler: ${fetchError.message || 'Server nicht erreichbar'}`);
+    }
 
-    const data = await response.json();
+    let data: any;
+    try {
+      data = await response.json();
+    } catch (jsonError) {
+      console.error('[BackendAPI] JSON parse error:', jsonError);
+      throw new Error(`Server-Antwort ungültig (Status: ${response.status})`);
+    }
+
+    console.log('[BackendAPI] Response status:', response.status);
+    console.log('[BackendAPI] Response data:', JSON.stringify(data, null, 2));
 
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to initialize connection');
+      const errorMsg = data.error || data.message || `HTTP ${response.status}`;
+      throw new Error(errorMsg);
     }
 
     // Store session and connection IDs
-    await AsyncStorage.setItem(STORAGE_KEYS.SESSION_ID, data.sessionId);
-    await AsyncStorage.setItem(STORAGE_KEYS.CONNECTION_ID, data.connectionId);
+    if (data.sessionId) {
+      await AsyncStorage.setItem(STORAGE_KEYS.SESSION_ID, data.sessionId);
+    }
+    if (data.connectionId) {
+      await AsyncStorage.setItem(STORAGE_KEYS.CONNECTION_ID, data.connectionId);
+    }
     
     // Save bank credentials (BLZ and login name) for future syncs
     // Note: PIN is NOT saved for security reasons
