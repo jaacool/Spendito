@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Modal, Pressable, ActivityIndicator, Linking, ScrollView } from 'react-native';
-import { X, Type, Minus, Circle, Plus, Building2, Wallet, Link, Unlink, ExternalLink, CheckCircle2 } from 'lucide-react-native';
+import { View, Text, StyleSheet, Modal, Pressable, ActivityIndicator, ScrollView, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { X, Type, Minus, Circle, Plus, Building2, Wallet, Link, Unlink, CheckCircle2, RefreshCw, Eye, EyeOff } from 'lucide-react-native';
 import { useSettings, UIScale } from '../context/SettingsContext';
-import { apiConfigService, ConnectionStatus } from '../services/apiConfig';
-import { gocardlessApiService } from '../services/gocardlessApi';
+import { backendApiService } from '../services/backendApi';
 import Constants from 'expo-constants';
 
 interface SettingsModalProps {
@@ -17,12 +16,27 @@ const SCALE_OPTIONS: { value: UIScale; label: string; description: string }[] = 
   { value: 'large', label: 'Groß', description: 'Bessere Lesbarkeit' },
 ];
 
+interface BankConnectionStatus {
+  connected: boolean;
+  connectionId?: string;
+}
+
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { uiScale, setUIScale } = useSettings();
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<BankConnectionStatus | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [bankSearchResults, setBankSearchResults] = useState<any[]>([]);
-  const [showBankList, setShowBankList] = useState(false);
+  const [showBankForm, setShowBankForm] = useState(false);
+  const [showPin, setShowPin] = useState(false);
+  
+  // Bank connection form
+  const [bankId, setBankId] = useState('');
+  const [loginName, setLoginName] = useState('');
+  const [pin, setPin] = useState('');
+  const [connectionStep, setConnectionStep] = useState<'form' | 'tan-select' | 'syncing' | 'done'>('form');
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [tanMethods, setTanMethods] = useState<Array<{ id: string; name: string }>>([]);
+  const [accounts, setAccounts] = useState<Array<{ id: string; account_number: string; iban?: string }>>([]);
+  const [statusMessage, setStatusMessage] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -32,84 +46,136 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const loadConnectionStatus = async () => {
     try {
-      await apiConfigService.initialize();
-      const status = await apiConfigService.getConnectionStatus();
+      const status = await backendApiService.getConnectionStatus();
       setConnectionStatus(status);
     } catch (error) {
       console.error('Failed to load connection status:', error);
     }
   };
 
-  const handleConnectPayPal = async () => {
-    if (!apiConfigService.isPayPalConfigured()) {
-      alert('PayPal API ist nicht konfiguriert. Bitte API-Keys in .env setzen.');
-      return;
-    }
-
-    const redirectUri = 'spendito://paypal-callback';
-    const authUrl = apiConfigService.getPayPalAuthUrl(redirectUri);
-    
-    try {
-      await Linking.openURL(authUrl);
-    } catch (error) {
-      console.error('Failed to open PayPal auth:', error);
-    }
+  const handleConnectBank = () => {
+    setShowBankForm(true);
+    setConnectionStep('form');
+    setBankId('');
+    setLoginName('');
+    setPin('');
+    setStatusMessage('');
   };
 
-  const handleDisconnectPayPal = async () => {
-    await apiConfigService.disconnectPayPal();
-    await loadConnectionStatus();
-  };
-
-  const handleConnectBank = async () => {
-    if (!apiConfigService.isGoCardlessConfigured()) {
-      alert('GoCardless API ist nicht konfiguriert. Bitte API-Keys in .env setzen.');
+  const handleSubmitBankForm = async () => {
+    if (!bankId || !loginName || !pin) {
+      Alert.alert('Fehler', 'Bitte fülle alle Felder aus.');
       return;
     }
 
     setIsLoading(true);
+    setStatusMessage('Verbinde mit Bank...');
+
     try {
-      // Search for Volksbank
-      const banks = await gocardlessApiService.searchBank('Volksbank');
-      setBankSearchResults(banks.slice(0, 10)); // Show top 10 results
-      setShowBankList(true);
-    } catch (error) {
-      console.error('Failed to search banks:', error);
-      alert('Fehler beim Laden der Banken. Bitte prüfe die API-Konfiguration.');
+      const result = await backendApiService.initBankConnection(bankId, loginName, pin);
+      
+      setSessionId(result.sessionId);
+      
+      if (result.tanMethods && result.tanMethods.length > 0) {
+        setTanMethods(result.tanMethods);
+        setConnectionStep('tan-select');
+        setStatusMessage('Wähle TAN-Verfahren');
+      } else if (result.accounts) {
+        setAccounts(result.accounts);
+        setConnectionStep('done');
+        setStatusMessage('Verbindung erfolgreich!');
+        await loadConnectionStatus();
+      }
+    } catch (error: any) {
+      Alert.alert('Fehler', error.message || 'Verbindung fehlgeschlagen');
+      setStatusMessage('');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleSelectBank = async (institutionId: string, institutionName: string) => {
-    setIsLoading(true);
-    try {
-      const redirectUrl = 'spendito://bank-callback';
-      const reference = `spendito_${Date.now()}`;
-      
-      const { id, link } = await gocardlessApiService.createBankConnection(
-        institutionId,
-        redirectUrl,
-        reference
-      );
+  const handleSelectTanMethod = async (tanMethodId: string) => {
+    if (!sessionId) return;
 
-      // Store requisition ID temporarily
-      await apiConfigService.saveBankConnection(id, '', institutionName);
+    setIsLoading(true);
+    setConnectionStep('syncing');
+    setStatusMessage('Synchronisiere Konten...');
+
+    try {
+      const result = await backendApiService.selectTanMethod(sessionId, tanMethodId);
       
-      // Open bank authentication
-      await Linking.openURL(link);
-      setShowBankList(false);
-    } catch (error) {
-      console.error('Failed to create bank connection:', error);
-      alert('Fehler beim Verbinden mit der Bank.');
+      if (result.requiresTan) {
+        Alert.alert('TAN erforderlich', result.tanChallenge || 'Bitte TAN eingeben');
+        // TODO: Add TAN input UI
+      } else if (result.accounts) {
+        setAccounts(result.accounts);
+        setConnectionStep('done');
+        setStatusMessage(`${result.accounts.length} Konto(en) gefunden!`);
+        await loadConnectionStatus();
+      }
+    } catch (error: any) {
+      Alert.alert('Fehler', error.message || 'Synchronisierung fehlgeschlagen');
+      setConnectionStep('tan-select');
+      setStatusMessage('');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleFetchTransactions = async () => {
+    if (!sessionId || accounts.length === 0) return;
+
+    setIsLoading(true);
+    setStatusMessage('Lade Transaktionen...');
+
+    try {
+      const result = await backendApiService.fetchTransactions(sessionId, accounts[0].id);
+      
+      if (result.requiresTan) {
+        Alert.alert('TAN erforderlich', result.tanChallenge || 'Bitte TAN eingeben');
+      } else {
+        Alert.alert('Erfolg', `${result.transactionsAdded} neue Transaktionen importiert!`);
+        setShowBankForm(false);
+        await backendApiService.endSession();
+      }
+    } catch (error: any) {
+      Alert.alert('Fehler', error.message || 'Transaktionen konnten nicht geladen werden');
+    } finally {
+      setIsLoading(false);
+      setStatusMessage('');
     }
   };
 
   const handleDisconnectBank = async () => {
-    await apiConfigService.disconnectBank();
-    await loadConnectionStatus();
+    Alert.alert(
+      'Bank trennen',
+      'Möchtest du die Bankverbindung wirklich trennen?',
+      [
+        { text: 'Abbrechen', style: 'cancel' },
+        {
+          text: 'Trennen',
+          style: 'destructive',
+          onPress: async () => {
+            await backendApiService.disconnect();
+            await loadConnectionStatus();
+            setShowBankForm(false);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCancelBankForm = () => {
+    setShowBankForm(false);
+    setConnectionStep('form');
+    setBankId('');
+    setLoginName('');
+    setPin('');
+    setStatusMessage('');
+    if (sessionId) {
+      backendApiService.endSession();
+      setSessionId(null);
+    }
   };
 
   const appVersion = Constants.expoConfig?.version || '1.0.0';
@@ -146,50 +212,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <Building2 size={18} color="#0066b3" />
                   </View>
                   <View style={styles.connectionDetails}>
-                    <Text style={styles.connectionName}>Volksbank</Text>
-                    {connectionStatus?.volksbank.connected ? (
-                      <View style={styles.connectedBadge}>
-                        <CheckCircle2 size={10} color="#22c55e" />
-                        <Text style={styles.connectedText}>
-                          {connectionStatus.volksbank.institutionName || 'Verbunden'}
-                        </Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.disconnectedText}>Nicht verbunden</Text>
-                    )}
-                  </View>
-                </View>
-                {connectionStatus?.volksbank.connected ? (
-                  <Pressable style={styles.disconnectButton} onPress={handleDisconnectBank}>
-                    <Unlink size={14} color="#ef4444" />
-                  </Pressable>
-                ) : (
-                  <Pressable 
-                    style={[styles.connectButton, isLoading && styles.buttonDisabled]} 
-                    onPress={handleConnectBank}
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <ActivityIndicator size="small" color="#0066b3" />
-                    ) : (
-                      <>
-                        <ExternalLink size={12} color="#0066b3" />
-                        <Text style={styles.connectButtonText}>Verbinden</Text>
-                      </>
-                    )}
-                  </Pressable>
-                )}
-              </View>
-
-              {/* PayPal Connection */}
-              <View style={styles.connectionCard}>
-                <View style={styles.connectionInfo}>
-                  <View style={[styles.connectionIcon, { backgroundColor: '#00308715' }]}>
-                    <Wallet size={18} color="#003087" />
-                  </View>
-                  <View style={styles.connectionDetails}>
-                    <Text style={styles.connectionName}>PayPal</Text>
-                    {connectionStatus?.paypal.connected ? (
+                    <Text style={styles.connectionName}>Volksbank (FinTS)</Text>
+                    {connectionStatus?.connected ? (
                       <View style={styles.connectedBadge}>
                         <CheckCircle2 size={10} color="#22c55e" />
                         <Text style={styles.connectedText}>Verbunden</Text>
@@ -199,40 +223,178 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     )}
                   </View>
                 </View>
-                {connectionStatus?.paypal.connected ? (
-                  <Pressable style={styles.disconnectButton} onPress={handleDisconnectPayPal}>
+                {connectionStatus?.connected ? (
+                  <Pressable style={styles.disconnectButton} onPress={handleDisconnectBank}>
                     <Unlink size={14} color="#ef4444" />
                   </Pressable>
                 ) : (
-                  <Pressable style={styles.connectButton} onPress={handleConnectPayPal}>
-                    <ExternalLink size={12} color="#003087" />
-                    <Text style={[styles.connectButtonText, { color: '#003087' }]}>Verbinden</Text>
+                  <Pressable 
+                    style={styles.connectButton} 
+                    onPress={handleConnectBank}
+                  >
+                    <Link size={12} color="#0066b3" />
+                    <Text style={styles.connectButtonText}>Verbinden</Text>
                   </Pressable>
                 )}
               </View>
 
-              {/* Bank Selection List */}
-              {showBankList && bankSearchResults.length > 0 && (
-                <View style={styles.bankList}>
-                  <Text style={styles.bankListTitle}>Bank auswählen:</Text>
-                  {bankSearchResults.map((bank) => (
-                    <Pressable
-                      key={bank.id}
-                      style={styles.bankOption}
-                      onPress={() => handleSelectBank(bank.id, bank.name)}
-                    >
-                      <Text style={styles.bankOptionName}>{bank.name}</Text>
-                      <Text style={styles.bankOptionBic}>{bank.bic}</Text>
-                    </Pressable>
-                  ))}
-                  <Pressable 
-                    style={styles.cancelBankButton}
-                    onPress={() => setShowBankList(false)}
-                  >
-                    <Text style={styles.cancelBankText}>Abbrechen</Text>
-                  </Pressable>
+              {/* Bank Connection Form */}
+              {showBankForm && (
+                <View style={styles.bankForm}>
+                  <Text style={styles.bankFormTitle}>
+                    {connectionStep === 'form' && 'Bank verbinden'}
+                    {connectionStep === 'tan-select' && 'TAN-Verfahren wählen'}
+                    {connectionStep === 'syncing' && 'Synchronisiere...'}
+                    {connectionStep === 'done' && 'Verbindung erfolgreich'}
+                  </Text>
+
+                  {statusMessage ? (
+                    <View style={styles.statusBar}>
+                      {isLoading && <ActivityIndicator size="small" color="#0066b3" />}
+                      <Text style={styles.statusText}>{statusMessage}</Text>
+                    </View>
+                  ) : null}
+
+                  {connectionStep === 'form' && (
+                    <>
+                      <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Bankleitzahl (BLZ)</Text>
+                        <TextInput
+                          style={styles.input}
+                          value={bankId}
+                          onChangeText={setBankId}
+                          placeholder="z.B. 76069449"
+                          keyboardType="number-pad"
+                          maxLength={8}
+                        />
+                      </View>
+
+                      <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>VR-NetKey / Alias</Text>
+                        <TextInput
+                          style={styles.input}
+                          value={loginName}
+                          onChangeText={setLoginName}
+                          placeholder="Dein Login-Name"
+                          autoCapitalize="none"
+                        />
+                      </View>
+
+                      <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>PIN</Text>
+                        <View style={styles.pinInputContainer}>
+                          <TextInput
+                            style={[styles.input, styles.pinInput]}
+                            value={pin}
+                            onChangeText={setPin}
+                            placeholder="••••••"
+                            secureTextEntry={!showPin}
+                            autoCapitalize="none"
+                          />
+                          <Pressable 
+                            style={styles.pinToggle}
+                            onPress={() => setShowPin(!showPin)}
+                          >
+                            {showPin ? (
+                              <EyeOff size={18} color="#6b7280" />
+                            ) : (
+                              <Eye size={18} color="#6b7280" />
+                            )}
+                          </Pressable>
+                        </View>
+                      </View>
+
+                      <View style={styles.formButtons}>
+                        <Pressable 
+                          style={styles.cancelButton}
+                          onPress={handleCancelBankForm}
+                        >
+                          <Text style={styles.cancelButtonText}>Abbrechen</Text>
+                        </Pressable>
+                        <Pressable 
+                          style={[styles.submitButton, isLoading && styles.buttonDisabled]}
+                          onPress={handleSubmitBankForm}
+                          disabled={isLoading}
+                        >
+                          {isLoading ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                          ) : (
+                            <Text style={styles.submitButtonText}>Verbinden</Text>
+                          )}
+                        </Pressable>
+                      </View>
+                    </>
+                  )}
+
+                  {connectionStep === 'tan-select' && (
+                    <View style={styles.tanMethodList}>
+                      {tanMethods.map((method) => (
+                        <Pressable
+                          key={method.id}
+                          style={styles.tanMethodOption}
+                          onPress={() => handleSelectTanMethod(method.id)}
+                          disabled={isLoading}
+                        >
+                          <Text style={styles.tanMethodName}>{method.name}</Text>
+                        </Pressable>
+                      ))}
+                      <Pressable 
+                        style={styles.cancelButton}
+                        onPress={handleCancelBankForm}
+                      >
+                        <Text style={styles.cancelButtonText}>Abbrechen</Text>
+                      </Pressable>
+                    </View>
+                  )}
+
+                  {connectionStep === 'done' && (
+                    <View style={styles.doneSection}>
+                      <CheckCircle2 size={32} color="#22c55e" />
+                      <Text style={styles.doneText}>
+                        {accounts.length} Konto(en) gefunden
+                      </Text>
+                      {accounts.map((acc) => (
+                        <Text key={acc.id} style={styles.accountInfo}>
+                          {acc.iban || acc.account_number}
+                        </Text>
+                      ))}
+                      <Pressable 
+                        style={[styles.submitButton, { marginTop: 12 }]}
+                        onPress={handleFetchTransactions}
+                        disabled={isLoading}
+                      >
+                        {isLoading ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <>
+                            <RefreshCw size={14} color="#fff" />
+                            <Text style={styles.submitButtonText}>Transaktionen laden</Text>
+                          </>
+                        )}
+                      </Pressable>
+                      <Pressable 
+                        style={[styles.cancelButton, { marginTop: 8 }]}
+                        onPress={handleCancelBankForm}
+                      >
+                        <Text style={styles.cancelButtonText}>Schließen</Text>
+                      </Pressable>
+                    </View>
+                  )}
                 </View>
               )}
+
+              {/* PayPal - Coming Soon */}
+              <View style={[styles.connectionCard, { opacity: 0.5 }]}>
+                <View style={styles.connectionInfo}>
+                  <View style={[styles.connectionIcon, { backgroundColor: '#00308715' }]}>
+                    <Wallet size={18} color="#003087" />
+                  </View>
+                  <View style={styles.connectionDetails}>
+                    <Text style={styles.connectionName}>PayPal</Text>
+                    <Text style={styles.disconnectedText}>Demnächst verfügbar</Text>
+                  </View>
+                </View>
+              </View>
             </View>
 
             {/* UI Scale Setting */}
@@ -529,5 +691,128 @@ const styles = StyleSheet.create({
   versionText: {
     fontSize: 11,
     color: '#9ca3af',
+  },
+  // Bank form styles
+  bankForm: {
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 16,
+    marginTop: 8,
+  },
+  bankFormTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  statusBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#f0f9ff',
+    padding: 8,
+    borderRadius: 6,
+    marginBottom: 12,
+  },
+  statusText: {
+    fontSize: 12,
+    color: '#0066b3',
+    fontWeight: '500',
+  },
+  inputGroup: {
+    marginBottom: 12,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#6b7280',
+    marginBottom: 4,
+  },
+  input: {
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 14,
+    color: '#1f2937',
+  },
+  pinInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pinInput: {
+    flex: 1,
+  },
+  pinToggle: {
+    position: 'absolute',
+    right: 10,
+    padding: 4,
+  },
+  formButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  cancelButton: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  submitButton: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: '#0066b3',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  tanMethodList: {
+    gap: 8,
+  },
+  tanMethodOption: {
+    padding: 12,
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  tanMethodName: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#1f2937',
+    textAlign: 'center',
+  },
+  doneSection: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  doneText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#22c55e',
+  },
+  accountInfo: {
+    fontSize: 12,
+    color: '#6b7280',
+    fontFamily: 'monospace',
   },
 });
