@@ -96,28 +96,44 @@ async function fetchPayPalTransactions(
 // ============================================
 
 /**
- * Check PayPal connection status
+ * Check PayPal connection status for a user
  */
-router.get('/status', async (req, res) => {
+router.get('/status/:userId', async (req, res) => {
   try {
     if (!PAYPAL_CLIENT_ID || !PAYPAL_CLIENT_SECRET) {
       return res.json({ 
         configured: false, 
-        message: 'PayPal credentials not configured' 
+        connected: false,
+        message: 'PayPal API nicht konfiguriert' 
       });
     }
 
-    // Try to get a token to verify credentials
-    await getAccessToken();
+    // Check if user has a PayPal connection in the database
+    const connection = db.prepare(`
+      SELECT * FROM bank_connections 
+      WHERE user_id = ? AND bank_id = 'paypal'
+    `).get(req.params.userId) as any;
+
+    // Try to verify credentials work
+    try {
+      await getAccessToken();
+    } catch {
+      return res.json({ 
+        configured: false, 
+        connected: false,
+        message: 'PayPal API-Credentials ungültig' 
+      });
+    }
     
     res.json({ 
       configured: true, 
-      connected: true,
-      message: 'PayPal connection active' 
+      connected: !!connection,
+      lastSync: connection?.last_sync || null,
+      message: connection ? 'PayPal verbunden' : 'Bereit zum Verbinden'
     });
   } catch (error: any) {
     res.json({ 
-      configured: true, 
+      configured: false, 
       connected: false, 
       message: error.message 
     });

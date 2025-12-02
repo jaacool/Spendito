@@ -302,7 +302,8 @@ class BackendApiService {
    */
   async getPayPalStatus(): Promise<{ configured: boolean; connected: boolean; message?: string }> {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/paypal/status`);
+      await this.initialize();
+      const response = await fetch(`${BACKEND_URL}/api/paypal/status/${this.userId}`);
       return response.json();
     } catch {
       return { configured: false, connected: false };
