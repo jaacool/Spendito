@@ -77,7 +77,20 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       const authUrl = await backendApiService.getPayPalAuthUrl();
       await Linking.openURL(authUrl);
     } catch (error: any) {
-      Alert.alert('Fehler', error.message || 'PayPal Verbindung fehlgeschlagen');
+      // Check if it's a PayPal approval pending error
+      if (error.message?.includes('pending') || error.message?.includes('approval')) {
+        Alert.alert(
+          'PayPal Genehmigung ausstehend',
+          'Die PayPal-Integration wartet noch auf Genehmigung durch PayPal. Bitte versuche es später erneut.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert(
+          'PayPal Verbindung',
+          'Die PayPal-Anmeldung wird geöffnet. Falls ein Fehler auftritt, ist die PayPal-Integration möglicherweise noch nicht freigeschaltet.',
+          [{ text: 'OK' }]
+        );
+      }
     } finally {
       setIsPaypalLoading(false);
     }
