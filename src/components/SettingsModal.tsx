@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Modal, Pressable, ActivityIndicator, ScrollView, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
-import { X, Type, Minus, Circle, Plus, Building2, Wallet, Link, Unlink, CheckCircle2, RefreshCw, Eye, EyeOff } from 'lucide-react-native';
+import { View, Text, StyleSheet, Modal, Pressable, ActivityIndicator, ScrollView, TextInput, Alert, Linking } from 'react-native';
+import { X, Type, Minus, Circle, Plus, Building2, Wallet, Link, Unlink, CheckCircle2, RefreshCw, Eye, EyeOff, ExternalLink } from 'lucide-react-native';
 import { useSettings, UIScale } from '../context/SettingsContext';
 import { backendApiService } from '../services/backendApi';
 import Constants from 'expo-constants';
@@ -71,10 +71,36 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
+  const handleConnectPayPal = async () => {
+    setIsPaypalLoading(true);
+    try {
+      const authUrl = await backendApiService.getPayPalAuthUrl();
+      await Linking.openURL(authUrl);
+    } catch (error: any) {
+      Alert.alert('Fehler', error.message || 'PayPal Verbindung fehlgeschlagen');
+    } finally {
+      setIsPaypalLoading(false);
+    }
+  };
+
   const handleSyncPayPal = async () => {
     setIsPaypalLoading(true);
     try {
       const result = await backendApiService.syncPayPal();
+      
+      if (result.needsAuth) {
+        // User needs to connect PayPal first
+        Alert.alert(
+          'PayPal nicht verbunden',
+          'Bitte verbinde zuerst dein PayPal-Konto.',
+          [
+            { text: 'Abbrechen', style: 'cancel' },
+            { text: 'Verbinden', onPress: handleConnectPayPal },
+          ]
+        );
+        return;
+      }
+      
       Alert.alert(
         'PayPal Sync',
         `${result.transactionsAdded} neue Transaktionen importiert!`
@@ -495,7 +521,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         <Text style={styles.connectedText}>Verbunden</Text>
                       </View>
                     ) : paypalStatus?.configured ? (
-                      <Text style={styles.disconnectedText}>Bereit zum Sync</Text>
+                      <Text style={styles.disconnectedText}>Nicht verbunden</Text>
                     ) : (
                       <Text style={styles.disconnectedText}>Nicht konfiguriert</Text>
                     )}
@@ -503,23 +529,40 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </View>
                 {paypalStatus?.configured && (
                   <View style={styles.paypalButtons}>
-                    <Pressable 
-                      style={[styles.syncButton, isPaypalLoading && styles.buttonDisabled]}
-                      onPress={handleSyncPayPal}
-                      disabled={isPaypalLoading}
-                    >
-                      {isPaypalLoading ? (
-                        <ActivityIndicator size="small" color="#003087" />
-                      ) : (
-                        <>
-                          <RefreshCw size={12} color="#003087" />
-                          <Text style={[styles.connectButtonText, { color: '#003087' }]}>Sync</Text>
-                        </>
-                      )}
-                    </Pressable>
-                    {paypalStatus?.connected && (
-                      <Pressable style={styles.disconnectButton} onPress={handleDisconnectPayPal}>
-                        <Unlink size={14} color="#ef4444" />
+                    {paypalStatus?.connected ? (
+                      <>
+                        <Pressable 
+                          style={[styles.syncButton, isPaypalLoading && styles.buttonDisabled]}
+                          onPress={handleSyncPayPal}
+                          disabled={isPaypalLoading}
+                        >
+                          {isPaypalLoading ? (
+                            <ActivityIndicator size="small" color="#003087" />
+                          ) : (
+                            <>
+                              <RefreshCw size={12} color="#003087" />
+                              <Text style={[styles.connectButtonText, { color: '#003087' }]}>Sync</Text>
+                            </>
+                          )}
+                        </Pressable>
+                        <Pressable style={styles.disconnectButton} onPress={handleDisconnectPayPal}>
+                          <Unlink size={14} color="#ef4444" />
+                        </Pressable>
+                      </>
+                    ) : (
+                      <Pressable 
+                        style={[styles.connectButton, { backgroundColor: '#00308715' }, isPaypalLoading && styles.buttonDisabled]}
+                        onPress={handleConnectPayPal}
+                        disabled={isPaypalLoading}
+                      >
+                        {isPaypalLoading ? (
+                          <ActivityIndicator size="small" color="#003087" />
+                        ) : (
+                          <>
+                            <ExternalLink size={12} color="#003087" />
+                            <Text style={[styles.connectButtonText, { color: '#003087' }]}>Verbinden</Text>
+                          </>
+                        )}
                       </Pressable>
                     )}
                   </View>

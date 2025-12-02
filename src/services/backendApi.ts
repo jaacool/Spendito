@@ -311,9 +311,25 @@ class BackendApiService {
   }
 
   /**
+   * Get PayPal OAuth login URL
+   */
+  async getPayPalAuthUrl(): Promise<string> {
+    await this.initialize();
+    
+    const response = await fetch(`${BACKEND_URL}/api/paypal/auth-url/${this.userId}`);
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to get PayPal auth URL');
+    }
+    
+    return data.authUrl;
+  }
+
+  /**
    * Sync PayPal transactions
    */
-  async syncPayPal(startDate?: string, endDate?: string): Promise<{ success: boolean; transactionsAdded: number; error?: string }> {
+  async syncPayPal(startDate?: string, endDate?: string): Promise<{ success: boolean; transactionsAdded: number; needsAuth?: boolean; error?: string }> {
     await this.initialize();
 
     const response = await fetch(`${BACKEND_URL}/api/paypal/sync/${this.userId}`, {
@@ -325,6 +341,9 @@ class BackendApiService {
     const data = await response.json();
 
     if (!response.ok) {
+      if (data.needsAuth) {
+        return { success: false, transactionsAdded: 0, needsAuth: true };
+      }
       throw new Error(data.error || 'PayPal sync failed');
     }
 
