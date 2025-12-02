@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { Heart, Shield, Users, PlusCircle, Stethoscope, UtensilsCrossed, Truck, Home, FileText, MinusCircle } from 'lucide-react-native';
+import { Heart, Shield, Users, PlusCircle, Stethoscope, Truck, Home, FileText, MinusCircle } from 'lucide-react-native';
 import { Category, CATEGORY_INFO } from '../types';
 
 interface CategoryCardProps {
@@ -18,7 +18,6 @@ const ICONS: Record<string, React.ComponentType<any>> = {
   users: Users,
   'plus-circle': PlusCircle,
   stethoscope: Stethoscope,
-  utensils: UtensilsCrossed,
   truck: Truck,
   home: Home,
   'file-text': FileText,

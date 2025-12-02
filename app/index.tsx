@@ -10,7 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Menu, Dog, TrendingUp, TrendingDown } from 'lucide-react-native';
+import { Menu, Dog, TrendingUp, TrendingDown, Building2, Wallet } from 'lucide-react-native';
 import { useApp } from '../src/context/AppContext';
 import { 
   SummaryHeader, 
@@ -21,7 +21,7 @@ import {
   CategoryBar,
   SettingsModal,
 } from '../src/components';
-import { Category } from '../src/types';
+import { Category, SourceAccount } from '../src/types';
 
 export default function HomeScreen() {
   const {
@@ -39,6 +39,8 @@ export default function HomeScreen() {
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'all' | 'income' | 'expense'>('all');
+  const [accountFilter, setAccountFilter] = useState<'all' | SourceAccount>('all');
+  const [showDuplicates, setShowDuplicates] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -50,9 +52,17 @@ export default function HomeScreen() {
   };
 
   const filteredTransactions = transactions.filter(t => {
-    if (activeTab === 'all') return true;
-    return t.type === activeTab;
+    // Filter by type
+    if (activeTab !== 'all' && t.type !== activeTab) return false;
+    // Filter by account
+    if (accountFilter !== 'all' && t.sourceAccount !== accountFilter) return false;
+    // Filter duplicates
+    if (!showDuplicates && t.isDuplicate) return false;
+    return true;
   });
+
+  // Count duplicates for display
+  const duplicateCount = transactions.filter(t => t.isDuplicate).length;
 
   const handleCategoryChange = async (id: string, category: Category) => {
     await updateTransactionCategory(id, category);
@@ -191,6 +201,48 @@ export default function HomeScreen() {
             </Text>
           </Pressable>
         </View>
+
+        {/* Account Filter */}
+        <View style={styles.accountFilterContainer}>
+          <Pressable
+            style={[styles.accountFilterButton, accountFilter === 'all' && styles.accountFilterActive]}
+            onPress={() => setAccountFilter('all')}
+          >
+            <Text style={[styles.accountFilterText, accountFilter === 'all' && styles.accountFilterTextActive]}>
+              Alle
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.accountFilterButton, accountFilter === 'volksbank' && styles.accountFilterActive]}
+            onPress={() => setAccountFilter('volksbank')}
+          >
+            <Building2 size={12} color={accountFilter === 'volksbank' ? '#0066b3' : '#6b7280'} />
+            <Text style={[styles.accountFilterText, accountFilter === 'volksbank' && { color: '#0066b3' }]}>
+              Volksbank
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.accountFilterButton, accountFilter === 'paypal' && styles.accountFilterActive]}
+            onPress={() => setAccountFilter('paypal')}
+          >
+            <Wallet size={12} color={accountFilter === 'paypal' ? '#003087' : '#6b7280'} />
+            <Text style={[styles.accountFilterText, accountFilter === 'paypal' && { color: '#003087' }]}>
+              PayPal
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Duplicate Toggle */}
+        {duplicateCount > 0 && (
+          <Pressable 
+            style={styles.duplicateToggle}
+            onPress={() => setShowDuplicates(!showDuplicates)}
+          >
+            <Text style={styles.duplicateToggleText}>
+              {showDuplicates ? 'Duplikate ausblenden' : `${duplicateCount} Duplikate anzeigen`}
+            </Text>
+          </Pressable>
+        )}
 
         {/* Transactions List */}
         <View style={styles.transactionsContainer}>
@@ -357,6 +409,49 @@ const styles = StyleSheet.create({
   tabTextActive: {
     color: '#1f2937',
     fontWeight: '600',
+  },
+  accountFilterContainer: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    gap: 8,
+  },
+  accountFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  accountFilterActive: {
+    borderColor: '#0ea5e9',
+    backgroundColor: '#e0f2fe',
+  },
+  accountFilterText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#6b7280',
+  },
+  accountFilterTextActive: {
+    color: '#0ea5e9',
+  },
+  duplicateToggle: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#fef3c7',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  duplicateToggleText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#d97706',
   },
   transactionsContainer: {
     marginHorizontal: 16,

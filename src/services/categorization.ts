@@ -11,11 +11,10 @@ const DEFAULT_RULES: Omit<CategoryRule, 'id' | 'createdAt' | 'matchCount'>[] = [
   { pattern: 'mitglied|beitrag|membership', category: 'membership', priority: 100, isUserDefined: false },
   
   // Expense patterns
-  { pattern: 'tierarzt|tierärzt|vet|tierklinik|tiermedizin|impf|kastration|sterilisation', category: 'veterinary', priority: 100, isUserDefined: false },
-  { pattern: 'futter|fressnapf|zooplus|futterhaus|tierfutter|hundefutter', category: 'food', priority: 100, isUserDefined: false },
-  { pattern: 'transport|fahrt|benzin|tankstelle|flug|fähre', category: 'transport', priority: 100, isUserDefined: false },
-  { pattern: 'pflegestelle|pflege|unterbringung|pension', category: 'foster_care', priority: 100, isUserDefined: false },
-  { pattern: 'büro|porto|druck|verwaltung|versicherung|bank|gebühr', category: 'administration', priority: 90, isUserDefined: false },
+  { pattern: 'tierarzt|tierärzt|vet|tierklinik|tiermedizin|impf|kastration|sterilisation|medikament', category: 'veterinary', priority: 100, isUserDefined: false },
+  { pattern: 'pflegestelle|pflege|unterbringung|pension|foster|futter|fressnapf|zooplus', category: 'foster_care', priority: 100, isUserDefined: false },
+  { pattern: 'transport|fahrt|benzin|tankstelle|flug|fähre|reise', category: 'transport', priority: 100, isUserDefined: false },
+  { pattern: 'büro|porto|druck|verwaltung|versicherung|bank|gebühr|steuer', category: 'administration', priority: 90, isUserDefined: false },
 ];
 
 class CategorizationService {

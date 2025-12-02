@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
-import { ChevronRight, Check } from 'lucide-react-native';
-import { Transaction, Category, CATEGORY_INFO, INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '../types';
+import { ChevronRight, Check, Building2, Wallet, Link2 } from 'lucide-react-native';
+import { Transaction, Category, CATEGORY_INFO, INCOME_CATEGORIES, EXPENSE_CATEGORIES, ACCOUNT_INFO } from '../types';
 
 interface TransactionItemProps {
   transaction: Transaction;
@@ -14,7 +14,9 @@ export function TransactionItem({ transaction, onCategoryChange }: TransactionIt
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   
   const info = CATEGORY_INFO[transaction.category];
+  const accountInfo = ACCOUNT_INFO[transaction.sourceAccount];
   const isIncome = transaction.type === 'income';
+  const isDuplicate = transaction.isDuplicate;
   
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('de-DE', {
@@ -36,18 +38,39 @@ export function TransactionItem({ transaction, onCategoryChange }: TransactionIt
         style={({ pressed }) => [
           styles.container,
           pressed && styles.pressed,
+          isDuplicate && styles.duplicateContainer,
         ]}
       >
         <View style={styles.leftSection}>
-          <View style={[styles.categoryIndicator, { backgroundColor: info.color }]} />
+          <View style={[styles.categoryIndicator, { backgroundColor: isDuplicate ? '#d1d5db' : info.color }]} />
           <View style={styles.content}>
-            <Text style={styles.description} numberOfLines={1}>
-              {transaction.description}
-            </Text>
-            <Text style={styles.counterparty} numberOfLines={1}>
+            <View style={styles.descriptionRow}>
+              <Text style={[styles.description, isDuplicate && styles.duplicateText]} numberOfLines={1}>
+                {transaction.description}
+              </Text>
+              {isDuplicate && (
+                <View style={styles.duplicateBadge}>
+                  <Link2 size={10} color="#9ca3af" />
+                  <Text style={styles.duplicateBadgeText}>Duplikat</Text>
+                </View>
+              )}
+            </View>
+            <Text style={[styles.counterparty, isDuplicate && styles.duplicateText]} numberOfLines={1}>
               {transaction.counterparty}
             </Text>
             <View style={styles.metaRow}>
+              {/* Account Badge */}
+              <View style={[styles.accountBadge, { backgroundColor: accountInfo.color + '15' }]}>
+                {transaction.sourceAccount === 'volksbank' ? (
+                  <Building2 size={10} color={accountInfo.color} />
+                ) : (
+                  <Wallet size={10} color={accountInfo.color} />
+                )}
+                <Text style={[styles.accountText, { color: accountInfo.color }]}>
+                  {accountInfo.label}
+                </Text>
+              </View>
+              {/* Category Badge */}
               <View style={[styles.categoryBadge, { backgroundColor: info.color + '15' }]}>
                 <Text style={[styles.categoryText, { color: info.color }]}>
                   {info.labelDe}
@@ -63,7 +86,11 @@ export function TransactionItem({ transaction, onCategoryChange }: TransactionIt
         </View>
         
         <View style={styles.rightSection}>
-          <Text style={[styles.amount, { color: isIncome ? '#22c55e' : '#ef4444' }]}>
+          <Text style={[
+            styles.amount, 
+            { color: isIncome ? '#22c55e' : '#ef4444' },
+            isDuplicate && styles.duplicateAmount
+          ]}>
             {isIncome ? '+' : '-'}{formatCurrency(transaction.amount)}
           </Text>
           <Text style={styles.date}>{formatDate(transaction.date)}</Text>
@@ -133,6 +160,10 @@ const styles = StyleSheet.create({
   pressed: {
     backgroundColor: '#f9fafb',
   },
+  duplicateContainer: {
+    backgroundColor: '#f9fafb',
+    opacity: 0.7,
+  },
   leftSection: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -148,11 +179,34 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  descriptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   description: {
     fontSize: 13,
     fontWeight: '500',
     color: '#1f2937',
     marginBottom: 1,
+    flex: 1,
+  },
+  duplicateText: {
+    color: '#9ca3af',
+  },
+  duplicateBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#f3f4f6',
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  duplicateBadgeText: {
+    fontSize: 8,
+    color: '#9ca3af',
+    fontWeight: '500',
   },
   counterparty: {
     fontSize: 11,
@@ -163,6 +217,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  accountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  accountText: {
+    fontSize: 8,
+    fontWeight: '600',
   },
   categoryBadge: {
     paddingHorizontal: 6,
@@ -191,6 +257,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 1,
+  },
+  duplicateAmount: {
+    textDecorationLine: 'line-through',
+    color: '#9ca3af',
   },
   date: {
     fontSize: 10,
