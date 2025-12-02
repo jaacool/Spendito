@@ -187,11 +187,11 @@ router.get('/auth-url/:userId', (req, res) => {
   const { userId } = req.params;
   const redirectUri = `${BACKEND_URL}/api/paypal/callback`;
   
-  // PayPal OAuth URL with required scopes for transaction access
+  // PayPal OAuth URL - use only basic scopes that are always available
+  // Transaction access will use the app's client credentials instead
   const scopes = [
     'openid',
     'email',
-    'https://uri.paypal.com/services/reporting/search/read',
   ].join(' ');
 
   const params = new URLSearchParams({
