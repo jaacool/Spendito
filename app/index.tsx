@@ -54,8 +54,9 @@ export default function HomeScreen() {
   const filteredTransactions = transactions.filter(t => {
     // Filter by type
     if (activeTab !== 'all' && t.type !== activeTab) return false;
-    // Filter by account
-    if (accountFilter !== 'all' && t.sourceAccount !== accountFilter) return false;
+    // Filter by account (with fallback for old transactions)
+    const txAccount = t.sourceAccount || 'volksbank';
+    if (accountFilter !== 'all' && txAccount !== accountFilter) return false;
     // Filter duplicates
     if (!showDuplicates && t.isDuplicate) return false;
     return true;

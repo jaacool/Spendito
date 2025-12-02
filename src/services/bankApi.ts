@@ -32,6 +32,7 @@ export interface RawBankTransaction {
   purpose: string; // Verwendungszweck
   bookingText: string;
   reference?: string;
+  transactionId?: string;
 }
 
 interface BankApiConfig {
@@ -133,7 +134,8 @@ class BankApiService {
         counterparty: raw.counterpartyName,
         isManuallyCategized: false,
         confidence,
-        rawData: JSON.stringify(raw),
+        sourceAccount: 'volksbank' as const,
+        externalId: raw.transactionId,
       };
     });
   }

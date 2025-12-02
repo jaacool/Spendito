@@ -13,8 +13,10 @@ interface TransactionItemProps {
 export function TransactionItem({ transaction, onCategoryChange }: TransactionItemProps) {
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   
-  const info = CATEGORY_INFO[transaction.category];
-  const accountInfo = ACCOUNT_INFO[transaction.sourceAccount];
+  const category = transaction.category || 'other';
+  const info = CATEGORY_INFO[category] || { label: 'Other', labelDe: 'Sonstiges', icon: 'circle', color: '#6b7280' };
+  const sourceAccount = transaction.sourceAccount || 'volksbank';
+  const accountInfo = ACCOUNT_INFO[sourceAccount] || { label: 'Volksbank', color: '#0066b3' };
   const isIncome = transaction.type === 'income';
   const isDuplicate = transaction.isDuplicate;
   
@@ -61,7 +63,7 @@ export function TransactionItem({ transaction, onCategoryChange }: TransactionIt
             <View style={styles.metaRow}>
               {/* Account Badge */}
               <View style={[styles.accountBadge, { backgroundColor: accountInfo.color + '15' }]}>
-                {transaction.sourceAccount === 'volksbank' ? (
+                {sourceAccount === 'volksbank' ? (
                   <Building2 size={10} color={accountInfo.color} />
                 ) : (
                   <Wallet size={10} color={accountInfo.color} />
