@@ -12,13 +12,24 @@ const activeSessions: Map<string, { client: FinTSClient; connectionId: string }>
 const PRODUCT_ID = process.env.FINTS_PRODUCT_ID || '9FA6681DEC0CF3046BFC2F8A6';
 const PRODUCT_VERSION = '1.0.0';
 
-// Common Volksbank/VR-Bank FinTS endpoints
-const BANK_ENDPOINTS: Record<string, string> = {
-  // Fiducia (most VR-Banken)
-  'fiducia': 'https://hbci11.fiducia.de/cgi-bin/hbciservlet',
-  // Atruvia (merged Fiducia + GAD)
-  'atruvia': 'https://hbci-pintan.gad.de/cgi-bin/hbciservlet',
-};
+// Atruvia FinTS endpoints (new URLs since March 2024)
+// fints2 = former Fiducia banks (South Germany, Bayern, etc.)
+// fints1 = former GAD banks (North Germany)
+const ATRUVIA_FINTS2 = 'https://fints2.atruvia.de/cgi-bin/hbciservlet';
+const ATRUVIA_FINTS1 = 'https://fints1.atruvia.de/cgi-bin/hbciservlet';
+
+// BLZ ranges for routing to correct server
+// Bayern/Baden-Württemberg (7xxxxxxx, 6xxxxxxx) -> fints2
+// Rest of Germany -> fints1
+function getFinTSUrl(blz: string): string {
+  const prefix = blz.charAt(0);
+  // Süddeutsche Banken (BLZ beginnt mit 6 oder 7) -> fints2
+  if (prefix === '6' || prefix === '7') {
+    return ATRUVIA_FINTS2;
+  }
+  // Norddeutsche Banken -> fints1
+  return ATRUVIA_FINTS1;
+}
 
 /**
  * Initialize FinTS connection and get available TAN methods
@@ -30,7 +41,9 @@ router.post('/init', async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields: userId, bankId, loginName, pin' });
   }
 
-  const finalBankUrl = bankUrl || BANK_ENDPOINTS['fiducia'];
+  // Use provided URL or auto-detect based on BLZ
+  const finalBankUrl = bankUrl || getFinTSUrl(bankId);
+  console.log(`[FinTS] Using server: ${finalBankUrl} for BLZ: ${bankId}`);
 
   try {
     // Create FinTS config for first-time use
@@ -350,8 +363,11 @@ router.post('/end-session', (req, res) => {
  */
 router.get('/banks', (req, res) => {
   res.json({
-    endpoints: BANK_ENDPOINTS,
-    note: 'Most Volksbanken use the Fiducia endpoint. Enter your BLZ (Bankleitzahl) as bankId.'
+    endpoints: {
+      'fints2 (Süddeutschland)': ATRUVIA_FINTS2,
+      'fints1 (Norddeutschland)': ATRUVIA_FINTS1,
+    },
+    note: 'Server wird automatisch anhand der BLZ erkannt. BLZ 6xxxxx/7xxxxx -> fints2, Rest -> fints1'
   });
 });
 
