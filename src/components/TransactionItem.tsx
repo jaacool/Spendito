@@ -1,0 +1,269 @@
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
+import { format } from 'date-fns';
+import { de } from 'date-fns/locale';
+import { ChevronRight, Check } from 'lucide-react-native';
+import { Transaction, Category, CATEGORY_INFO, INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '../types';
+
+interface TransactionItemProps {
+  transaction: Transaction;
+  onCategoryChange: (category: Category) => void;
+}
+
+export function TransactionItem({ transaction, onCategoryChange }: TransactionItemProps) {
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  
+  const info = CATEGORY_INFO[transaction.category];
+  const isIncome = transaction.type === 'income';
+  
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('de-DE', {
+      style: 'currency',
+      currency: 'EUR',
+    }).format(Math.abs(amount));
+  };
+
+  const formatDate = (dateString: string) => {
+    return format(new Date(dateString), 'd. MMM', { locale: de });
+  };
+
+  const categories = isIncome ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+
+  return (
+    <>
+      <Pressable
+        onPress={() => setShowCategoryPicker(true)}
+        style={({ pressed }) => [
+          styles.container,
+          pressed && styles.pressed,
+        ]}
+      >
+        <View style={styles.leftSection}>
+          <View style={[styles.categoryIndicator, { backgroundColor: info.color }]} />
+          <View style={styles.content}>
+            <Text style={styles.description} numberOfLines={1}>
+              {transaction.description}
+            </Text>
+            <Text style={styles.counterparty} numberOfLines={1}>
+              {transaction.counterparty}
+            </Text>
+            <View style={styles.metaRow}>
+              <View style={[styles.categoryBadge, { backgroundColor: info.color + '15' }]}>
+                <Text style={[styles.categoryText, { color: info.color }]}>
+                  {info.labelDe}
+                </Text>
+              </View>
+              {transaction.confidence < 0.7 && !transaction.isManuallyCategized && (
+                <View style={styles.lowConfidenceBadge}>
+                  <Text style={styles.lowConfidenceText}>Unsicher</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
+        
+        <View style={styles.rightSection}>
+          <Text style={[styles.amount, { color: isIncome ? '#22c55e' : '#ef4444' }]}>
+            {isIncome ? '+' : '-'}{formatCurrency(transaction.amount)}
+          </Text>
+          <Text style={styles.date}>{formatDate(transaction.date)}</Text>
+          <ChevronRight size={16} color="#d1d5db" style={styles.chevron} />
+        </View>
+      </Pressable>
+
+      {/* Category Picker Modal */}
+      <Modal
+        visible={showCategoryPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCategoryPicker(false)}
+      >
+        <Pressable 
+          style={styles.modalOverlay}
+          onPress={() => setShowCategoryPicker(false)}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Kategorie ändern</Text>
+            <Text style={styles.modalSubtitle}>{transaction.description}</Text>
+            
+            {categories.map((cat) => {
+              const catInfo = CATEGORY_INFO[cat];
+              const isSelected = cat === transaction.category;
+              
+              return (
+                <Pressable
+                  key={cat}
+                  style={[styles.categoryOption, isSelected && styles.categoryOptionSelected]}
+                  onPress={() => {
+                    onCategoryChange(cat);
+                    setShowCategoryPicker(false);
+                  }}
+                >
+                  <View style={[styles.categoryDot, { backgroundColor: catInfo.color }]} />
+                  <Text style={styles.categoryOptionText}>{catInfo.labelDe}</Text>
+                  {isSelected && <Check size={20} color="#22c55e" />}
+                </Pressable>
+              );
+            })}
+            
+            <Pressable
+              style={styles.cancelButton}
+              onPress={() => setShowCategoryPicker(false)}
+            >
+              <Text style={styles.cancelButtonText}>Abbrechen</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  pressed: {
+    backgroundColor: '#f9fafb',
+  },
+  leftSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
+  },
+  categoryIndicator: {
+    width: 3,
+    height: 36,
+    borderRadius: 1.5,
+    marginRight: 10,
+  },
+  content: {
+    flex: 1,
+  },
+  description: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#1f2937',
+    marginBottom: 1,
+  },
+  counterparty: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginBottom: 4,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  categoryBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  categoryText: {
+    fontSize: 9,
+    fontWeight: '600',
+  },
+  lowConfidenceBadge: {
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 3,
+  },
+  lowConfidenceText: {
+    fontSize: 8,
+    color: '#d97706',
+    fontWeight: '500',
+  },
+  rightSection: {
+    alignItems: 'flex-end',
+  },
+  amount: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 1,
+  },
+  date: {
+    fontSize: 10,
+    color: '#9ca3af',
+  },
+  chevron: {
+    marginTop: 2,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 340,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  categoryOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+    backgroundColor: '#f9fafb',
+  },
+  categoryOptionSelected: {
+    backgroundColor: '#ecfdf5',
+  },
+  categoryDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 12,
+  },
+  categoryOptionText: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  cancelButton: {
+    marginTop: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+});

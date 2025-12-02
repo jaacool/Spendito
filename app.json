@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "Spendito",
+    "slug": "spendito",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "scheme": "spendito",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f9fafb"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.spendito.app",
+      "buildNumber": "1.0.0"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#f9fafb"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.spendito.app",
+      "versionCode": 1
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}
