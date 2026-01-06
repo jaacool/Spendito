@@ -6,7 +6,27 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "electron": "electron .",
+    "build:web": "expo export:web",
+    "build:windows": "npm run build:web && electron-builder --win"
+  },
+  "build": {
+    "appId": "com.spendito.app",
+    "productName": "Spendito",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron-main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "assets/icon.png"
+    }
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -33,6 +53,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.4.0",
     "typescript": "~5.9.2"
   },
   "private": true

@@ -285,11 +285,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         // No TAN methods and no accounts - something unexpected
         console.log('[Bank] Unexpected result - no TAN methods or accounts');
         setStatusMessage('Warte auf Bankserver...');
-        Alert.alert(
-          'Hinweis',
-          'Die Bank hat noch keine Konten zurückgegeben. Möglicherweise ist eine TAN-Freigabe in deiner Banking-App erforderlich.',
-          [{ text: 'OK' }]
-        );
+        const msg = 'Die Bank hat noch keine Konten zurückgegeben. Möglicherweise ist eine TAN-Freigabe in deiner Banking-App erforderlich.';
+        if (typeof window !== 'undefined' && window.alert) {
+          window.alert(msg);
+        } else {
+          Alert.alert('Hinweis', msg, [{ text: 'OK' }]);
+        }
       }
     } catch (error: any) {
       console.error('[Bank] Connection error:', error);
@@ -307,7 +308,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         userMessage = 'Serverfehler. Bitte versuche es später erneut.';
       }
       
-      Alert.alert('Verbindung fehlgeschlagen', userMessage);
+      if (typeof window !== 'undefined' && window.alert) {
+        window.alert(`Verbindung fehlgeschlagen: ${userMessage}`);
+      } else {
+        Alert.alert('Verbindung fehlgeschlagen', userMessage);
+      }
       setStatusMessage('Fehler: ' + userMessage);
     } finally {
       setIsLoading(false);
@@ -325,7 +330,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       const result = await backendApiService.selectTanMethod(sessionId, tanMethodId);
       
       if (result.requiresTan) {
-        Alert.alert('TAN erforderlich', result.tanChallenge || 'Bitte TAN eingeben');
+        const msg = result.tanChallenge || 'Bitte TAN eingeben';
+        if (typeof window !== 'undefined' && window.alert) {
+          window.alert(`TAN erforderlich: ${msg}`);
+        } else {
+          Alert.alert('TAN erforderlich', msg);
+        }
         // TODO: Add TAN input UI
       } else if (result.accounts) {
         setAccounts(result.accounts);
@@ -334,7 +344,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         await loadConnectionStatus();
       }
     } catch (error: any) {
-      Alert.alert('Fehler', error.message || 'Synchronisierung fehlgeschlagen');
+      const msg = error.message || 'Synchronisierung fehlgeschlagen';
+      if (typeof window !== 'undefined' && window.alert) {
+        window.alert(`Fehler: ${msg}`);
+      } else {
+        Alert.alert('Fehler', msg);
+      }
       setConnectionStep('tan-select');
       setStatusMessage('');
     } finally {
@@ -352,14 +367,29 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       const result = await backendApiService.fetchTransactions(sessionId, accounts[0].id);
       
       if (result.requiresTan) {
-        Alert.alert('TAN erforderlich', result.tanChallenge || 'Bitte TAN eingeben');
+        const msg = result.tanChallenge || 'Bitte TAN eingeben';
+        if (typeof window !== 'undefined' && window.alert) {
+          window.alert(`TAN erforderlich: ${msg}`);
+        } else {
+          Alert.alert('TAN erforderlich', msg);
+        }
       } else {
-        Alert.alert('Erfolg', `${result.transactionsAdded} neue Transaktionen importiert!`);
+        const msg = `${result.transactionsAdded} neue Transaktionen importiert!`;
+        if (typeof window !== 'undefined' && window.alert) {
+          window.alert(`Erfolg: ${msg}`);
+        } else {
+          Alert.alert('Erfolg', msg);
+        }
         setShowBankForm(false);
         await backendApiService.endSession();
       }
     } catch (error: any) {
-      Alert.alert('Fehler', error.message || 'Transaktionen konnten nicht geladen werden');
+      const msg = error.message || 'Transaktionen konnten nicht geladen werden';
+      if (typeof window !== 'undefined' && window.alert) {
+        window.alert(`Fehler: ${msg}`);
+      } else {
+        Alert.alert('Fehler', msg);
+      }
     } finally {
       setIsLoading(false);
       setStatusMessage('');

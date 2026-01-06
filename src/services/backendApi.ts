@@ -91,6 +91,9 @@ class BackendApiService {
 
     console.log('[BackendAPI] Initiating bank connection to:', BACKEND_URL);
     
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout for bank sync
+
     let response: Response;
     try {
       response = await fetch(`${BACKEND_URL}/api/fints/init`, {
@@ -102,10 +105,16 @@ class BackendApiService {
           loginName,
           pin,
         }),
+        signal: controller.signal,
       });
     } catch (fetchError: any) {
       console.error('[BackendAPI] Fetch error:', fetchError);
+      if (fetchError.name === 'AbortError') {
+        throw new Error('Zeitüberschreitung: Der Bankserver antwortet zu langsam. Bitte versuche es später erneut.');
+      }
       throw new Error(`Netzwerkfehler: ${fetchError.message || 'Server nicht erreichbar'}`);
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     let data: any;

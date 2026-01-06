@@ -8,10 +8,12 @@ import {
   ActivityIndicator,
   RefreshControl,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Menu, Dog, TrendingUp, TrendingDown, Building2, Wallet } from 'lucide-react-native';
+import { Menu, Dog, TrendingUp, TrendingDown, Building2, Wallet, Settings, BrainCircuit } from 'lucide-react-native';
 import { useApp } from '../src/context/AppContext';
+import { isDesktop } from '../src/services/platform';
 import { 
   SummaryHeader, 
   CategoryCard, 
@@ -37,6 +39,9 @@ export default function HomeScreen() {
     refreshData,
     loadMockData,
   } = useApp();
+
+  const { width } = useWindowDimensions();
+  const desktopMode = isDesktop(width);
 
   const [activeTab, setActiveTab] = useState<'all' | 'income' | 'expense'>('all');
   const [accountFilter, setAccountFilter] = useState<'all' | SourceAccount>('all');
@@ -82,198 +87,282 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable 
-          onPress={() => setSideMenuOpen(true)}
-          style={styles.menuButton}
-        >
-          <Menu size={24} color="#1f2937" />
-        </Pressable>
+        {!desktopMode && (
+          <Pressable 
+            onPress={() => setSideMenuOpen(true)}
+            style={styles.menuButton}
+          >
+            <Menu size={24} color="#1f2937" />
+          </Pressable>
+        )}
         
         <View style={styles.headerCenter}>
           <Dog size={24} color="#0ea5e9" strokeWidth={2} />
           <Text style={styles.headerTitle}>Spendito</Text>
         </View>
         
-        <View style={styles.yearBadge}>
-          <Text style={styles.yearText}>{selectedYear}</Text>
+        <View style={styles.headerRight}>
+          <View style={styles.yearBadge}>
+            <Text style={styles.yearText}>{selectedYear}</Text>
+          </View>
+          
+          {desktopMode && (
+            <View style={styles.desktopActions}>
+              <Pressable 
+                onPress={() => setIsReviewOpen(true)}
+                style={styles.iconButton}
+              >
+                <BrainCircuit size={20} color="#0ea5e9" />
+              </Pressable>
+              <Pressable 
+                onPress={() => setIsSettingsOpen(true)}
+                style={styles.iconButton}
+              >
+                <Settings size={20} color="#6b7280" />
+              </Pressable>
+            </View>
+          )}
         </View>
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#0ea5e9"
-          />
-        }
-      >
-        {/* Summary Header */}
-        {yearSummary && <SummaryHeader summary={yearSummary} />}
-
-        {/* Category Cards */}
-        {yearSummary && (
-          <View style={styles.categoriesSection}>
-            {/* Income Categories */}
-            {yearSummary.incomeByCategory.length > 0 && (
-              <View style={styles.categorySection}>
-                <View style={styles.sectionHeader}>
-                  <TrendingUp size={18} color="#22c55e" />
-                  <Text style={styles.sectionTitle}>Einnahmen nach Kategorie</Text>
-                </View>
-                <ScrollView 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.categoryScrollContent}
-                  style={styles.categoryScroll}
-                >
-                  {yearSummary.incomeByCategory.map((cat) => (
-                    <CategoryCard
-                      key={cat.category}
-                      category={cat.category}
-                      total={cat.total}
-                      count={cat.count}
-                      percentage={cat.percentage}
-                      type="income"
-                    />
+      <View style={styles.mainContent}>
+        {desktopMode && (
+          <View style={styles.desktopSidebar}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.sidebarSection}>
+                <Text style={styles.sidebarTitle}>Zeitraum</Text>
+                <View style={styles.yearGrid}>
+                  {availableYears.map(year => (
+                    <Pressable
+                      key={year}
+                      onPress={() => setSelectedYear(year)}
+                      style={[
+                        styles.yearOption,
+                        selectedYear === year && styles.yearOptionActive
+                      ]}
+                    >
+                      <Text style={[
+                        styles.yearOptionText,
+                        selectedYear === year && styles.yearOptionTextActive
+                      ]}>
+                        {year}
+                      </Text>
+                    </Pressable>
                   ))}
-                </ScrollView>
-                <CategoryBar data={yearSummary.incomeByCategory} height={6} />
-              </View>
-            )}
-
-            {/* Expense Categories */}
-            {yearSummary.expenseByCategory.length > 0 && (
-              <View style={styles.categorySection}>
-                <View style={styles.sectionHeader}>
-                  <TrendingDown size={18} color="#ef4444" />
-                  <Text style={styles.sectionTitle}>Ausgaben nach Kategorie</Text>
                 </View>
-                <ScrollView 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.categoryScrollContent}
-                  style={styles.categoryScroll}
-                >
-                  {yearSummary.expenseByCategory.map((cat) => (
-                    <CategoryCard
-                      key={cat.category}
-                      category={cat.category}
-                      total={cat.total}
-                      count={cat.count}
-                      percentage={cat.percentage}
-                      type="expense"
-                    />
-                  ))}
-                </ScrollView>
-                <CategoryBar data={yearSummary.expenseByCategory} height={6} />
               </View>
-            )}
+
+              <View style={styles.sidebarDivider} />
+
+              <View style={styles.sidebarSection}>
+                <Text style={styles.sidebarTitle}>Kategorien</Text>
+                {yearSummary && (
+                  <View style={styles.miniStats}>
+                    <View style={styles.miniStatItem}>
+                      <TrendingUp size={14} color="#22c55e" />
+                      <Text style={styles.miniStatLabel}>Einnahmen</Text>
+                      <Text style={styles.miniStatValue}>{yearSummary.totalIncome.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}</Text>
+                    </View>
+                    <View style={styles.miniStatItem}>
+                      <TrendingDown size={14} color="#ef4444" />
+                      <Text style={styles.miniStatLabel}>Ausgaben</Text>
+                      <Text style={styles.miniStatValue}>{yearSummary.totalExpense.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            </ScrollView>
           </View>
         )}
 
-        {/* Transaction Tabs */}
-        <View style={styles.tabsContainer}>
-          <Pressable
-            style={[styles.tab, activeTab === 'all' && styles.tabActive]}
-            onPress={() => setActiveTab('all')}
-          >
-            <Text style={[styles.tabText, activeTab === 'all' && styles.tabTextActive]}>
-              Alle
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.tab, activeTab === 'income' && styles.tabActive]}
-            onPress={() => setActiveTab('income')}
-          >
-            <Text style={[styles.tabText, activeTab === 'income' && styles.tabTextActive]}>
-              Einnahmen
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.tab, activeTab === 'expense' && styles.tabActive]}
-            onPress={() => setActiveTab('expense')}
-          >
-            <Text style={[styles.tabText, activeTab === 'expense' && styles.tabTextActive]}>
-              Ausgaben
-            </Text>
-          </Pressable>
-        </View>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[
+            styles.scrollContent,
+            desktopMode && styles.desktopScrollContent
+          ]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#0ea5e9"
+            />
+          }
+        >
+          {/* Summary Header */}
+          {yearSummary && <SummaryHeader summary={yearSummary} />}
 
-        {/* Account Filter */}
-        <View style={styles.accountFilterContainer}>
-          <Pressable
-            style={[styles.accountFilterButton, accountFilter === 'all' && styles.accountFilterActive]}
-            onPress={() => setAccountFilter('all')}
-          >
-            <Text style={[styles.accountFilterText, accountFilter === 'all' && styles.accountFilterTextActive]}>
-              Alle
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.accountFilterButton, accountFilter === 'volksbank' && styles.accountFilterActive]}
-            onPress={() => setAccountFilter('volksbank')}
-          >
-            <Building2 size={12} color={accountFilter === 'volksbank' ? '#0066b3' : '#6b7280'} />
-            <Text style={[styles.accountFilterText, accountFilter === 'volksbank' && { color: '#0066b3' }]}>
-              Volksbank
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.accountFilterButton, accountFilter === 'paypal' && styles.accountFilterActive]}
-            onPress={() => setAccountFilter('paypal')}
-          >
-            <Wallet size={12} color={accountFilter === 'paypal' ? '#003087' : '#6b7280'} />
-            <Text style={[styles.accountFilterText, accountFilter === 'paypal' && { color: '#003087' }]}>
-              PayPal
-            </Text>
-          </Pressable>
-        </View>
+          <View style={desktopMode ? styles.desktopTwoColumn : null}>
+            {/* Category Cards Section */}
+            <View style={desktopMode ? styles.desktopLeftColumn : null}>
+              {yearSummary && (
+                <View style={styles.categoriesSection}>
+                  {/* Income Categories */}
+                  {yearSummary.incomeByCategory.length > 0 && (
+                    <View style={styles.categorySection}>
+                      <View style={styles.sectionHeader}>
+                        <TrendingUp size={18} color="#22c55e" />
+                        <Text style={styles.sectionTitle}>Einnahmen</Text>
+                      </View>
+                      <ScrollView 
+                        horizontal 
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.categoryScrollContent}
+                        style={styles.categoryScroll}
+                      >
+                        {yearSummary.incomeByCategory.map((cat) => (
+                          <CategoryCard
+                            key={cat.category}
+                            category={cat.category}
+                            total={cat.total}
+                            count={cat.count}
+                            percentage={cat.percentage}
+                            type="income"
+                          />
+                        ))}
+                      </ScrollView>
+                      <CategoryBar data={yearSummary.incomeByCategory} height={6} />
+                    </View>
+                  )}
 
-        {/* Duplicate Toggle */}
-        {duplicateCount > 0 && (
-          <Pressable 
-            style={styles.duplicateToggle}
-            onPress={() => setShowDuplicates(!showDuplicates)}
-          >
-            <Text style={styles.duplicateToggleText}>
-              {showDuplicates ? 'Duplikate ausblenden' : `${duplicateCount} Duplikate anzeigen`}
-            </Text>
-          </Pressable>
-        )}
+                  {/* Expense Categories */}
+                  {yearSummary.expenseByCategory.length > 0 && (
+                    <View style={styles.categorySection}>
+                      <View style={styles.sectionHeader}>
+                        <TrendingDown size={18} color="#ef4444" />
+                        <Text style={styles.sectionTitle}>Ausgaben</Text>
+                      </View>
+                      <ScrollView 
+                        horizontal 
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.categoryScrollContent}
+                        style={styles.categoryScroll}
+                      >
+                        {yearSummary.expenseByCategory.map((cat) => (
+                          <CategoryCard
+                            key={cat.category}
+                            category={cat.category}
+                            total={cat.total}
+                            count={cat.count}
+                            percentage={cat.percentage}
+                            type="expense"
+                          />
+                        ))}
+                      </ScrollView>
+                      <CategoryBar data={yearSummary.expenseByCategory} height={6} />
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
 
-        {/* Transactions List */}
-        <View style={styles.transactionsContainer}>
-          <Text style={styles.transactionsTitle}>
-            {filteredTransactions.length} Buchungen
-          </Text>
-          
-          <View style={styles.transactionsList}>
-            {filteredTransactions.map((transaction) => (
-              <TransactionItem
-                key={transaction.id}
-                transaction={transaction}
-                onCategoryChange={(category) => handleCategoryChange(transaction.id, category)}
-              />
-            ))}
+            {/* Transactions Section */}
+            <View style={desktopMode ? styles.desktopRightColumn : null}>
+              {/* Transaction Tabs */}
+              <View style={styles.tabsContainer}>
+                <Pressable
+                  style={[styles.tab, activeTab === 'all' && styles.tabActive]}
+                  onPress={() => setActiveTab('all')}
+                >
+                  <Text style={[styles.tabText, activeTab === 'all' && styles.tabTextActive]}>
+                    Alle
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.tab, activeTab === 'income' && styles.tabActive]}
+                  onPress={() => setActiveTab('income')}
+                >
+                  <Text style={[styles.tabText, activeTab === 'income' && styles.tabTextActive]}>
+                    Einnahmen
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.tab, activeTab === 'expense' && styles.tabActive]}
+                  onPress={() => setActiveTab('expense')}
+                >
+                  <Text style={[styles.tabText, activeTab === 'expense' && styles.tabTextActive]}>
+                    Ausgaben
+                  </Text>
+                </Pressable>
+              </View>
+
+              {/* Account Filter */}
+              <View style={styles.accountFilterContainer}>
+                <Pressable
+                  style={[styles.accountFilterButton, accountFilter === 'all' && styles.accountFilterActive]}
+                  onPress={() => setAccountFilter('all')}
+                >
+                  <Text style={[styles.accountFilterText, accountFilter === 'all' && styles.accountFilterTextActive]}>
+                    Alle
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.accountFilterButton, accountFilter === 'volksbank' && styles.accountFilterActive]}
+                  onPress={() => setAccountFilter('volksbank')}
+                >
+                  <Building2 size={12} color={accountFilter === 'volksbank' ? '#0066b3' : '#6b7280'} />
+                  <Text style={[styles.accountFilterText, accountFilter === 'volksbank' && { color: '#0066b3' }]}>
+                    Volksbank
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.accountFilterButton, accountFilter === 'paypal' && styles.accountFilterActive]}
+                  onPress={() => setAccountFilter('paypal')}
+                >
+                  <Wallet size={12} color={accountFilter === 'paypal' ? '#003087' : '#6b7280'} />
+                  <Text style={[styles.accountFilterText, accountFilter === 'paypal' && { color: '#003087' }]}>
+                    PayPal
+                  </Text>
+                </Pressable>
+              </View>
+
+              {/* Duplicate Toggle */}
+              {duplicateCount > 0 && (
+                <Pressable 
+                  style={styles.duplicateToggle}
+                  onPress={() => setShowDuplicates(!showDuplicates)}
+                >
+                  <Text style={styles.duplicateToggleText}>
+                    {showDuplicates ? 'Duplikate ausblenden' : `${duplicateCount} Duplikate anzeigen`}
+                  </Text>
+                </Pressable>
+              )}
+
+              {/* Transactions List */}
+              <View style={styles.transactionsContainer}>
+                <Text style={styles.transactionsTitle}>
+                  {filteredTransactions.length} Buchungen
+                </Text>
+                
+                <View style={styles.transactionsList}>
+                  {filteredTransactions.map((transaction) => (
+                    <TransactionItem
+                      key={transaction.id}
+                      transaction={transaction}
+                      onCategoryChange={(category) => handleCategoryChange(transaction.id, category)}
+                    />
+                  ))}
+                </View>
+              </View>
+            </View>
           </View>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </View>
 
-      {/* Side Menu */}
-      <SideMenu
-        isOpen={isSideMenuOpen}
-        onClose={() => setSideMenuOpen(false)}
-        selectedYear={selectedYear}
-        availableYears={availableYears}
-        onYearSelect={setSelectedYear}
-        onReloadData={loadMockData}
-        onOpenReview={() => setIsReviewOpen(true)}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-      />
+      {/* Side Menu (Only for Mobile) */}
+      {!desktopMode && (
+        <SideMenu
+          isOpen={isSideMenuOpen}
+          onClose={() => setSideMenuOpen(false)}
+          selectedYear={selectedYear}
+          availableYears={availableYears}
+          onYearSelect={setSelectedYear}
+          onReloadData={loadMockData}
+          onOpenReview={() => setIsReviewOpen(true)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+        />
+      )}
 
       {/* AI Review Modal */}
       <ReviewModal
@@ -331,6 +420,95 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  desktopActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderLeftWidth: 1,
+    borderLeftColor: '#f3f4f6',
+    paddingLeft: 12,
+  },
+  iconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#f9fafb',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mainContent: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  desktopSidebar: {
+    width: 240,
+    backgroundColor: '#ffffff',
+    borderRightWidth: 1,
+    borderRightColor: '#f3f4f6',
+    padding: 16,
+  },
+  sidebarSection: {
+    marginBottom: 24,
+  },
+  sidebarTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#9ca3af',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 12,
+  },
+  sidebarDivider: {
+    height: 1,
+    backgroundColor: '#f3f4f6',
+    marginBottom: 24,
+  },
+  yearGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  yearOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+  },
+  yearOptionActive: {
+    backgroundColor: '#0ea5e9',
+  },
+  yearOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4b5563',
+  },
+  yearOptionTextActive: {
+    color: '#ffffff',
+  },
+  miniStats: {
+    gap: 16,
+  },
+  miniStatItem: {
+    backgroundColor: '#f9fafb',
+    padding: 12,
+    borderRadius: 12,
+  },
+  miniStatLabel: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginTop: 4,
+  },
+  miniStatValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginTop: 2,
+  },
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
@@ -352,6 +530,22 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 40,
+  },
+  desktopScrollContent: {
+    maxWidth: 1200,
+    alignSelf: 'center',
+    width: '100%',
+  },
+  desktopTwoColumn: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    gap: 24,
+  },
+  desktopLeftColumn: {
+    flex: 1,
+  },
+  desktopRightColumn: {
+    flex: 1.5,
   },
   categoriesSection: {
     // Container for all category sections
