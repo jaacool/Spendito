@@ -355,9 +355,13 @@ router.post('/sync/:userId', async (req, res) => {
 
     // Default to last 3 years (PayPal API max is 3 years)
     const end = endDate || new Date().toISOString();
-    // Use simple ISO format without milliseconds to be safe for PayPal API
+    // PayPal API requires YYYY-MM-DDTHH:mm:ssZ format
     const start = startDate || new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000).toISOString().split('.')[0] + 'Z';
     const endFormatted = end.split('.')[0] + 'Z';
+
+    console.log(`[PayPal] Original Start: ${new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000).toISOString()}`);
+    console.log(`[PayPal] Formatted Start: ${start}`);
+    console.log(`[PayPal] Formatted End: ${endFormatted}`);
 
     // Get connection
     const connection = db.prepare(`
