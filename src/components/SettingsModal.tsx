@@ -228,6 +228,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   };
 
   const handleConnectBank = async () => {
+    console.log('[Bank] handleConnectBank called');
     setShowBankForm(true);
     setConnectionStep('form');
     setPin('');
@@ -479,8 +480,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </Pressable>
                 ) : (
                   <Pressable 
-                    style={styles.connectButton} 
-                    onPress={handleConnectBank}
+                    style={[styles.connectButton, { cursor: 'pointer' } as any]} 
+                    onPress={() => {
+                      console.log('[Bank] Verbinden button pressed');
+                      handleConnectBank();
+                    }}
                   >
                     <Link size={12} color="#0066b3" />
                     <Text style={styles.connectButtonText}>Verbinden</Text>
@@ -961,7 +965,8 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     backgroundColor: '#e0f2fe',
     borderRadius: 6,
-  },
+    cursor: 'pointer',
+  } as any,
   connectButtonText: {
     fontSize: 11,
     fontWeight: '600',
