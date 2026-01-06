@@ -246,23 +246,44 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   };
 
   const handleSubmitBankForm = async () => {
+    console.log('[Bank] handleSubmitBankForm called');
+    console.log('[Bank] bankId:', bankId, 'loginName:', loginName, 'pin length:', pin?.length);
+    
     if (!bankId || !loginName || !pin) {
-      Alert.alert('Fehler', 'Bitte fülle alle Felder aus.');
+      const msg = 'Bitte fülle alle Felder aus.';
+      console.log('[Bank] Validation failed:', msg);
+      if (typeof window !== 'undefined' && window.alert) {
+        window.alert(msg);
+      } else {
+        Alert.alert('Fehler', msg);
+      }
       return;
     }
 
-    // Validate BLZ format
-    if (!/^\d{8}$/.test(bankId)) {
-      Alert.alert('Fehler', 'Die BLZ muss genau 8 Ziffern haben.');
+    // Remove spaces from BLZ and validate
+    const cleanBankId = bankId.replace(/\s/g, '');
+    console.log('[Bank] Clean BLZ:', cleanBankId);
+    
+    if (!/^\d{8}$/.test(cleanBankId)) {
+      const msg = `Die BLZ muss genau 8 Ziffern haben. Aktuell: "${cleanBankId}" (${cleanBankId.length} Zeichen)`;
+      console.log('[Bank] BLZ validation failed:', msg);
+      if (typeof window !== 'undefined' && window.alert) {
+        window.alert(msg);
+      } else {
+        Alert.alert('Fehler', msg);
+      }
       return;
     }
+    
+    // Use cleaned BLZ
+    setBankId(cleanBankId);
 
     setIsLoading(true);
     setStatusMessage('Verbinde mit Bank...');
 
     try {
-      console.log('[Bank] Starting connection with BLZ:', bankId);
-      const result = await backendApiService.initBankConnection(bankId, loginName, pin);
+      console.log('[Bank] Starting connection with BLZ:', cleanBankId);
+      const result = await backendApiService.initBankConnection(cleanBankId, loginName, pin);
       console.log('[Bank] Connection result:', JSON.stringify(result, null, 2));
       
       if (result.error) {
