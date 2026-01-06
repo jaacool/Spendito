@@ -329,7 +329,7 @@ class BackendApiService {
   /**
    * Sync PayPal transactions
    */
-  async syncPayPal(startDate?: string, endDate?: string): Promise<{ success: boolean; transactionsAdded: number; needsAuth?: boolean; error?: string }> {
+  async syncPayPal(startDate?: string, endDate?: string): Promise<{ success: boolean; transactionsFound: number; transactionsAdded: number; needsAuth?: boolean; error?: string }> {
     await this.initialize();
 
     const response = await fetch(`${BACKEND_URL}/api/paypal/sync/${this.userId}`, {
@@ -342,7 +342,7 @@ class BackendApiService {
 
     if (!response.ok) {
       if (data.needsAuth) {
-        return { success: false, transactionsAdded: 0, needsAuth: true };
+        return { success: false, transactionsFound: 0, transactionsAdded: 0, needsAuth: true };
       }
       throw new Error(data.error || 'PayPal sync failed');
     }

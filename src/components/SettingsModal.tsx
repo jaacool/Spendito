@@ -148,8 +148,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const handleSyncPayPal = async () => {
     setIsPaypalLoading(true);
     try {
+      console.log('[PayPal] Starting sync...');
       // First sync from PayPal API to backend
       const result = await backendApiService.syncPayPal();
+      console.log('[PayPal] Backend sync result:', result);
       
       if (result.needsAuth) {
         // User needs to connect PayPal first
@@ -166,18 +168,27 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       
       // Now fetch the transactions from backend and import to local storage
       const transactions = await backendApiService.getPayPalTransactions();
+      console.log(`[PayPal] Fetched ${transactions.length} transactions from backend`);
+      
       if (transactions.length > 0) {
-        const { storageService } = await import('../services/storage');
         const importResult = await storageService.importTransactions(transactions);
+        console.log('[PayPal] Storage import result:', importResult);
         
         Alert.alert(
           'PayPal Sync',
           `${importResult.added} neue Transaktionen importiert!\n(${importResult.duplicates} Duplikate übersprungen)`
         );
+        
+        // Refresh the app data to show new transactions
+        if (typeof window !== 'undefined' && window.location) {
+          // A bit drastic but ensures AppContext refreshes
+          // window.location.reload(); 
+          // Better: just trigger a refresh if we had a refresh function in context
+        }
       } else {
         Alert.alert(
           'PayPal Sync',
-          `${result.transactionsAdded} Transaktionen vom Backend abgerufen, aber keine neuen Einträge gefunden.`
+          `Keine Transaktionen gefunden.\n\nBackend meldete: ${result.transactionsFound || 0} gefunden, ${result.transactionsAdded || 0} neu gespeichert.`
         );
       }
       
