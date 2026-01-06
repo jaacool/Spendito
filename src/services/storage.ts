@@ -67,9 +67,15 @@ class StorageService {
 
   getAvailableYears(): number[] {
     const years = new Set<number>();
+    
+    // Always include current year
+    years.add(new Date().getFullYear());
+    
+    // Add years from transactions
     this.transactions.forEach(t => {
       years.add(new Date(t.date).getFullYear());
     });
+    
     return Array.from(years).sort((a, b) => b - a); // Newest first
   }
 
