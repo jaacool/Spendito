@@ -83,8 +83,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   async function updateTransactionCategory(id: string, category: Category) {
     const transaction = transactions.find(t => t.id === id);
     if (transaction) {
+      // Determine the correct type based on category
+      let newType: 'income' | 'expense' | 'transfer' = transaction.type;
+      if (category === 'transfer') {
+        newType = 'transfer';
+      } else if (transaction.amount >= 0) {
+        newType = 'income';
+      } else {
+        newType = 'expense';
+      }
+      
       await storageService.updateTransaction(id, {
         category,
+        type: newType,
         isManuallyCategized: true,
         isUserConfirmed: true,
         confidence: 1.0,
@@ -96,6 +107,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
         category, 
         transaction.amount
       );
+      
+      // Re-categorize all unconfirmed transactions based on updated rules
+      const allTransactions = storageService.getAllTransactions();
+      const recategorized = categorizationService.recategorizeUnconfirmed(allTransactions);
+      
+      // Save re-categorized transactions
+      for (const tx of recategorized) {
+        await storageService.updateTransaction(tx.id, {
+          category: tx.category,
+          type: tx.type,
+          confidence: tx.confidence,
+        });
+      }
+      
+      if (recategorized.length > 0) {
+        console.log(`[AppContext] Re-categorized ${recategorized.length} unconfirmed transactions`);
+      }
       
       // Refresh data
       updateYearData(selectedYear);

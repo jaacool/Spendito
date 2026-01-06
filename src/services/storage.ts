@@ -43,6 +43,10 @@ class StorageService {
     await this.saveTransactions();
   }
 
+  getAllTransactions(): Transaction[] {
+    return [...this.transactions];
+  }
+
   async updateTransaction(id: string, updates: Partial<Transaction>): Promise<void> {
     const index = this.transactions.findIndex(t => t.id === id);
     if (index !== -1) {

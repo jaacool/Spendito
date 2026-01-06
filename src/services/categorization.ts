@@ -6,8 +6,9 @@ const RULES_STORAGE_KEY = '@spendito_category_rules';
 // Default rules for initial categorization
 const DEFAULT_RULES: Omit<CategoryRule, 'id' | 'createdAt' | 'matchCount'>[] = [
   // Transfer patterns (highest priority - check first)
-  { pattern: 'guthaben-transfer|umbuchung|übertrag|transfer zwischen|eigenes konto|paypal guthaben', category: 'transfer', priority: 150, isUserDefined: false },
+  { pattern: 'guthaben.?transfer|umbuchung|übertrag|transfer zwischen|eigenes konto', category: 'transfer', priority: 150, isUserDefined: false },
   { pattern: 'paypal.*einzahlung|einzahlung.*paypal|paypal.*auszahlung|auszahlung.*paypal', category: 'transfer', priority: 150, isUserDefined: false },
+  { pattern: 'paypal guthaben|paypal-guthaben|guthaben paypal', category: 'transfer', priority: 150, isUserDefined: false },
   
   // Income patterns
   { pattern: 'spende|donation|geschenk', category: 'donation', priority: 100, isUserDefined: false },
@@ -33,6 +34,8 @@ class CategorizationService {
       const stored = await AsyncStorage.getItem(RULES_STORAGE_KEY);
       if (stored && !force) {
         this.rules = JSON.parse(stored);
+        // Ensure transfer rules exist (migration for existing users)
+        await this.ensureTransferRules();
       } else {
         // Initialize with default rules
         this.rules = DEFAULT_RULES.map((rule, index) => ({
@@ -201,6 +204,61 @@ class CategorizationService {
       matchCount: 0,
     }));
     await this.saveRules();
+  }
+
+  /**
+   * Ensure transfer rules exist (migration for existing users)
+   */
+  private async ensureTransferRules(): Promise<void> {
+    const hasTransferRule = this.rules.some(r => r.category === 'transfer');
+    if (!hasTransferRule) {
+      // Add transfer rules for existing users
+      const transferRules = DEFAULT_RULES.filter(r => r.category === 'transfer');
+      for (const rule of transferRules) {
+        this.rules.push({
+          ...rule,
+          id: `transfer_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          createdAt: new Date().toISOString(),
+          matchCount: 0,
+        });
+      }
+      await this.saveRules();
+    }
+  }
+
+  /**
+   * Re-categorize all unconfirmed transactions based on current rules
+   * Returns transactions that were re-categorized
+   */
+  recategorizeUnconfirmed(transactions: Transaction[]): Transaction[] {
+    const updated: Transaction[] = [];
+    
+    for (const tx of transactions) {
+      // Skip confirmed transactions
+      if (tx.isUserConfirmed || tx.isManuallyCategized) {
+        continue;
+      }
+      
+      // Re-categorize
+      const { category, confidence } = this.categorize(tx.description, tx.amount);
+      
+      // Only update if category changed
+      if (category !== tx.category) {
+        tx.category = category;
+        tx.confidence = confidence;
+        // Update type if it's a transfer
+        if (category === 'transfer') {
+          tx.type = 'transfer';
+        } else if (tx.amount >= 0) {
+          tx.type = 'income';
+        } else {
+          tx.type = 'expense';
+        }
+        updated.push(tx);
+      }
+    }
+    
+    return updated;
   }
 }
 
