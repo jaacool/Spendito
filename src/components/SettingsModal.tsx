@@ -96,8 +96,37 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setIsPaypalLoading(true);
     try {
       const authUrl = await backendApiService.getPayPalAuthUrl();
-      await Linking.openURL(authUrl);
+      
+      // On web, use window.open to create a popup so we can communicate via postMessage
+      if (typeof window !== 'undefined' && window.open) {
+        const popup = window.open(authUrl, 'paypal-auth', 'width=500,height=700,scrollbars=yes');
+        
+        // Poll for popup close and refresh status
+        const pollTimer = setInterval(async () => {
+          if (popup?.closed) {
+            clearInterval(pollTimer);
+            await loadPayPalStatus();
+            setIsPaypalLoading(false);
+          }
+        }, 500);
+        
+        // Also listen for postMessage from popup
+        const handleMessage = async (event: MessageEvent) => {
+          if (event.data?.type === 'PAYPAL_CONNECTED') {
+            clearInterval(pollTimer);
+            window.removeEventListener('message', handleMessage);
+            await loadPayPalStatus();
+            setIsPaypalLoading(false);
+          }
+        };
+        window.addEventListener('message', handleMessage);
+      } else {
+        // On native, use Linking
+        await Linking.openURL(authUrl);
+        setIsPaypalLoading(false);
+      }
     } catch (error: any) {
+      setIsPaypalLoading(false);
       // Check if it's a PayPal approval pending error
       if (error.message?.includes('pending') || error.message?.includes('approval')) {
         Alert.alert(
@@ -112,8 +141,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           [{ text: 'OK' }]
         );
       }
-    } finally {
-      setIsPaypalLoading(false);
     }
   };
 
