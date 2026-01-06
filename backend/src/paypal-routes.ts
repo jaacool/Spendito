@@ -384,6 +384,13 @@ router.post('/sync/:userId', async (req, res) => {
     console.log(`[PayPal] Fetching transactions for user ${userId} from ${start} to ${end}`);
     const transactions = await fetchUserTransactions(accessToken, start, end);
     console.log(`[PayPal] Found ${transactions.length} total transactions`);
+    
+    // Log the structure of the first transaction to debug
+    if (transactions.length > 0) {
+      console.log('[PayPal] First transaction sample:', JSON.stringify(transactions[0], null, 2));
+    } else {
+      console.log('[PayPal] No transactions found in the specified time range.');
+    }
 
     // Store transactions
     const stmt = db.prepare(`
