@@ -476,9 +476,56 @@ router.post('/sync/:userId', async (req, res) => {
         || txInfo.payee_info?.payee_name?.alternate_full_name
         || 'PayPal';
       
-      const description = txInfo.transaction_subject 
-        || txInfo.transaction_note 
-        || eventCode;
+      // Build a meaningful description - PayPal often doesn't provide transaction_subject
+      let description = txInfo.transaction_subject 
+        || txInfo.transaction_note;
+      
+      // If no description, try to build one from available info
+      if (!description || description === eventCode) {
+        // Map common PayPal event codes to German descriptions
+        const eventCodeDescriptions: Record<string, string> = {
+          'T0000': 'PayPal Zahlung',
+          'T0001': 'PayPal Zahlung erhalten',
+          'T0002': 'PayPal Zahlung gesendet',
+          'T0003': 'PayPal Vorautorisierung',
+          'T0004': 'PayPal Rückerstattung',
+          'T0005': 'PayPal Zahlung',
+          'T0006': 'PayPal Zahlung',
+          'T0007': 'PayPal Website-Zahlung',
+          'T0008': 'PayPal Abo-Zahlung',
+          'T0009': 'PayPal Abo-Zahlung',
+          'T0010': 'PayPal Rückbuchung',
+          'T0011': 'PayPal Rückbuchung',
+          'T0300': 'PayPal Guthaben-Transfer',
+          'T0400': 'PayPal Allgemeine Zahlung',
+          'T0500': 'PayPal Allgemeine Zahlung',
+          'T0700': 'PayPal Allgemeine Gutschrift',
+          'T0800': 'PayPal Bonus/Gutschrift',
+          'T0900': 'PayPal Gebühr',
+          'T1000': 'PayPal Rückbuchung',
+          'T1100': 'PayPal Währungsumrechnung',
+          'T1200': 'PayPal Währungsumrechnung',
+          'T1300': 'PayPal Anpassung',
+          'T1400': 'PayPal Kredit',
+          'T1500': 'PayPal Auszahlung',
+          'T1600': 'PayPal Einzahlung',
+          'T1700': 'PayPal Auszahlung',
+          'T1800': 'PayPal Einzahlung',
+          'T1900': 'PayPal Anpassung',
+          'T2000': 'PayPal Reservierung',
+          'T2100': 'PayPal Reservierung',
+          'T2200': 'PayPal Reservierung',
+          'T9700': 'PayPal Zahlung',
+          'T9800': 'PayPal Zahlung',
+          'T9900': 'PayPal Allgemein',
+        };
+        
+        // Try to find a matching description for the event code prefix
+        const codePrefix = eventCode.substring(0, 5);
+        description = eventCodeDescriptions[codePrefix] 
+          || eventCodeDescriptions[eventCode]
+          || (counterpartyName !== 'PayPal' ? `PayPal: ${counterpartyName}` : `PayPal Transaktion`);
+      }
 
       const result = stmt.run(
         id,
