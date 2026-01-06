@@ -262,15 +262,26 @@ router.get('/callback', async (req, res) => {
               Du kannst dieses Fenster nun schließen oder den Button unten nutzen, um zur App zurückzukehren.
             </p>
             <a href="spendito://paypal-success" 
-               style="display: inline-block; background: #0070ba; color: white; text-decoration: none; padding: 12px 24px; borderRadius: 100px; font-weight: 600; font-size: 16px;">
-              Zurück zur App
+               style="display: block; background: #0070ba; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-weight: 600; font-size: 16px; margin-bottom: 12px;">
+              Zurück zur App (Standard)
+            </a>
+            <a href="exp://127.0.0.1:8081/--/paypal-success" 
+               style="display: block; background: #f3f4f6; color: #4b5563; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-weight: 600; font-size: 14px;">
+              Zurück zur Expo Go (Entwicklung)
             </a>
           </div>
           <script>
-            // Auto-redirect after 2 seconds
-            setTimeout(() => {
-              window.location.href = 'spendito://paypal-success';
-            }, 2000);
+            // Try auto-redirect
+            const schemes = ['spendito://paypal-success', 'exp://127.0.0.1:8081/--/paypal-success'];
+            let attempt = 0;
+            
+            function tryNext() {
+              if (attempt < schemes.length) {
+                window.location.href = schemes[attempt++];
+              }
+            }
+            
+            setTimeout(tryNext, 1000);
           </script>
         </body>
       </html>
