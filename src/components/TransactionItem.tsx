@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal, TouchableOpacity } from 'react-native';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
-import { ChevronRight, Check, Building2, Wallet, Link2, CheckCircle2, Edit3, UserCheck } from 'lucide-react-native';
+import { ChevronRight, Check, Building2, Wallet, Link2, CheckCircle2 } from 'lucide-react-native';
 import { Transaction, Category, CATEGORY_INFO, INCOME_CATEGORIES, EXPENSE_CATEGORIES, ACCOUNT_INFO } from '../types';
 
 interface TransactionItemProps {
@@ -83,24 +83,10 @@ export function TransactionItem({ transaction, onCategoryChange, onConfirm }: Tr
                   {info.labelDe}
                 </Text>
               </View>
-              {/* Status Badge */}
-              {transaction.isManuallyCategized ? (
-                <View style={styles.userEditedBadge}>
-                  <Edit3 size={8} color="#8b5cf6" />
-                  <Text style={styles.userEditedText}>Bearbeitet</Text>
-                </View>
-              ) : transaction.isUserConfirmed ? (
-                <View style={styles.userConfirmedBadge}>
-                  <UserCheck size={8} color="#22c55e" />
-                  <Text style={styles.userConfirmedText}>Bestätigt</Text>
-                </View>
-              ) : transaction.confidence < 0.7 ? (
+              {/* Status Badge - only show for unverified */}
+              {!isUserConfirmed && transaction.confidence < 0.7 && (
                 <View style={styles.lowConfidenceBadge}>
                   <Text style={styles.lowConfidenceText}>Unsicher</Text>
-                </View>
-              ) : (
-                <View style={styles.autoBadge}>
-                  <Text style={styles.autoText}>Auto</Text>
                 </View>
               )}
             </View>
@@ -108,13 +94,18 @@ export function TransactionItem({ transaction, onCategoryChange, onConfirm }: Tr
         </View>
         
         <View style={styles.rightSection}>
-          <Text style={[
-            styles.amount, 
-            { color: isIncome ? '#22c55e' : '#ef4444' },
-            isDuplicate && styles.duplicateAmount
-          ]}>
-            {isIncome ? '+' : '-'}{formatCurrency(transaction.amount)}
-          </Text>
+          <View style={styles.amountRow}>
+            <Text style={[
+              styles.amount, 
+              { color: isIncome ? '#22c55e' : '#ef4444' },
+              isDuplicate && styles.duplicateAmount
+            ]}>
+              {isIncome ? '+' : '-'}{formatCurrency(transaction.amount)}
+            </Text>
+            {isUserConfirmed && (
+              <CheckCircle2 size={14} color="#22c55e" style={styles.verifiedIcon} />
+            )}
+          </View>
           <Text style={styles.date}>{formatDate(transaction.date)}</Text>
           <ChevronRight size={16} color="#d1d5db" style={styles.chevron} />
         </View>
@@ -390,44 +381,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#6b7280',
   },
-  // Status badges
-  userEditedBadge: {
+  amountRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    backgroundColor: '#f3e8ff',
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 4,
+    gap: 4,
   },
-  userEditedText: {
-    fontSize: 8,
-    color: '#8b5cf6',
-    fontWeight: '600',
-  },
-  userConfirmedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: '#dcfce7',
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  userConfirmedText: {
-    fontSize: 8,
-    color: '#22c55e',
-    fontWeight: '600',
-  },
-  autoBadge: {
-    backgroundColor: '#f3f4f6',
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  autoText: {
-    fontSize: 8,
-    color: '#9ca3af',
-    fontWeight: '500',
+  verifiedIcon: {
+    marginLeft: 2,
   },
 });
