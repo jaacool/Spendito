@@ -17,6 +17,7 @@ interface AppContextType {
   setSelectedYear: (year: number) => void;
   setSideMenuOpen: (open: boolean) => void;
   updateTransactionCategory: (id: string, category: Category) => Promise<void>;
+  confirmTransaction: (id: string) => Promise<void>;
   refreshData: () => Promise<void>;
   loadMockData: () => Promise<void>;
 }
@@ -85,6 +86,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await storageService.updateTransaction(id, {
         category,
         isManuallyCategized: true,
+        isUserConfirmed: true,
         confidence: 1.0,
       });
       
@@ -92,6 +94,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await categorizationService.learnFromCorrection(
         transaction.description, 
         category, 
+        transaction.amount
+      );
+      
+      // Refresh data
+      updateYearData(selectedYear);
+    }
+  }
+
+  async function confirmTransaction(id: string) {
+    const transaction = transactions.find(t => t.id === id);
+    if (transaction) {
+      await storageService.updateTransaction(id, {
+        isUserConfirmed: true,
+        confidence: 1.0,
+      });
+      
+      // Learn from confirmation - reinforce the current categorization
+      await categorizationService.learnFromCorrection(
+        transaction.description, 
+        transaction.category, 
         transaction.amount
       );
       
@@ -133,6 +155,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSelectedYear,
         setSideMenuOpen,
         updateTransactionCategory,
+        confirmTransaction,
         refreshData,
         loadMockData,
       }}

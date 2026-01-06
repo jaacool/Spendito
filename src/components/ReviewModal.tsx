@@ -7,8 +7,9 @@ import {
   Pressable, 
   ScrollView,
   ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
-import { X, Sparkles, Check, AlertCircle, ChevronRight } from 'lucide-react-native';
+import { X, Sparkles, Check, AlertCircle, ChevronRight, RefreshCw, Calendar } from 'lucide-react-native';
 import { Transaction, Category, CATEGORY_INFO } from '../types';
 import { aiReviewService, ReviewResult, QuarterlyReviewSummary } from '../services/aiReview';
 
@@ -17,33 +18,53 @@ interface ReviewModalProps {
   onClose: () => void;
   transactions: Transaction[];
   onApplyChange: (id: string, category: Category) => Promise<void>;
+  selectedYear: number;
+  availableYears: number[];
 }
 
-export function ReviewModal({ isOpen, onClose, transactions, onApplyChange }: ReviewModalProps) {
+export function ReviewModal({ isOpen, onClose, transactions, onApplyChange, selectedYear, availableYears }: ReviewModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [summary, setSummary] = useState<QuarterlyReviewSummary | null>(null);
   const [appliedChanges, setAppliedChanges] = useState<Set<string>>(new Set());
+  const [reviewYear, setReviewYear] = useState<number>(selectedYear);
+  const [showYearPicker, setShowYearPicker] = useState(false);
 
   useEffect(() => {
-    if (isOpen && !summary) {
+    if (isOpen) {
+      setReviewYear(selectedYear);
+      setSummary(null);
+      setAppliedChanges(new Set());
       performReview();
     }
-  }, [isOpen]);
+  }, [isOpen, selectedYear]);
 
-  const performReview = async () => {
+  const performReview = async (year?: number) => {
+    const targetYear = year || reviewYear;
     setIsLoading(true);
+    setSummary(null);
+    setAppliedChanges(new Set());
+    
     try {
-      const quarter = aiReviewService.constructor.prototype.constructor.getCurrentQuarter 
-        ? (aiReviewService.constructor as any).getCurrentQuarter()
-        : `Q${Math.floor(new Date().getMonth() / 3) + 1} ${new Date().getFullYear()}`;
-      
-      const result = await aiReviewService.performQuarterlyReview(transactions, quarter);
+      const periodLabel = `Jahr ${targetYear}`;
+      const result = await aiReviewService.performQuarterlyReview(transactions, periodLabel);
       setSummary(result);
     } catch (error) {
       console.error('Review failed:', error);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleYearChange = (year: number) => {
+    setReviewYear(year);
+    setShowYearPicker(false);
+    // Note: The actual transactions are filtered by the parent component based on selectedYear
+    // This just changes the label shown in the review
+    performReview(year);
+  };
+
+  const handleRerunAnalysis = () => {
+    performReview();
   };
 
   const handleApplyChange = async (result: ReviewResult) => {
@@ -102,13 +123,46 @@ export function ReviewModal({ isOpen, onClose, transactions, onApplyChange }: Re
               <View>
                 <Text style={styles.title}>KI-Überprüfung</Text>
                 <Text style={styles.subtitle}>
-                  {summary?.quarter || 'Quartalsweise Kategorieprüfung'}
+                  {summary?.quarter || `Jahr ${reviewYear}`}
                 </Text>
               </View>
             </View>
-            <Pressable onPress={onClose} style={styles.closeButton}>
-              <X size={24} color="#6b7280" />
-            </Pressable>
+            <View style={styles.headerActions}>
+              <TouchableOpacity 
+                style={styles.rerunButton}
+                onPress={handleRerunAnalysis}
+                disabled={isLoading}
+              >
+                <RefreshCw size={18} color="#8b5cf6" />
+              </TouchableOpacity>
+              <Pressable onPress={onClose} style={styles.closeButton}>
+                <X size={24} color="#6b7280" />
+              </Pressable>
+            </View>
+          </View>
+
+          {/* Year Selector */}
+          <View style={styles.yearSelector}>
+            <Text style={styles.yearLabel}>Zeitraum:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.yearScroll}>
+              {availableYears.map((year) => (
+                <TouchableOpacity
+                  key={year}
+                  style={[
+                    styles.yearButton,
+                    reviewYear === year && styles.yearButtonActive
+                  ]}
+                  onPress={() => handleYearChange(year)}
+                >
+                  <Text style={[
+                    styles.yearButtonText,
+                    reviewYear === year && styles.yearButtonTextActive
+                  ]}>
+                    {year}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
 
           {isLoading ? (
@@ -224,7 +278,7 @@ export function ReviewModal({ isOpen, onClose, transactions, onApplyChange }: Re
           ) : (
             <View style={styles.errorContainer}>
               <Text style={styles.errorText}>Fehler beim Laden der Überprüfung</Text>
-              <Pressable style={styles.retryButton} onPress={performReview}>
+              <Pressable style={styles.retryButton} onPress={() => performReview()}>
                 <Text style={styles.retryText}>Erneut versuchen</Text>
               </Pressable>
             </View>
@@ -477,5 +531,51 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#374151',
+  },
+  // Year selector styles
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  rerunButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#f3e8ff',
+  },
+  yearSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  yearLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6b7280',
+    marginRight: 12,
+  },
+  yearScroll: {
+    flex: 1,
+  },
+  yearButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#f3f4f6',
+    marginRight: 8,
+  },
+  yearButtonActive: {
+    backgroundColor: '#8b5cf6',
+  },
+  yearButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  yearButtonTextActive: {
+    color: '#ffffff',
   },
 });

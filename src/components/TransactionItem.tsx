@@ -1,17 +1,22 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Modal, TouchableOpacity } from 'react-native';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
-import { ChevronRight, Check, Building2, Wallet, Link2 } from 'lucide-react-native';
+import { ChevronRight, Check, Building2, Wallet, Link2, CheckCircle2, Edit3, UserCheck } from 'lucide-react-native';
 import { Transaction, Category, CATEGORY_INFO, INCOME_CATEGORIES, EXPENSE_CATEGORIES, ACCOUNT_INFO } from '../types';
 
 interface TransactionItemProps {
   transaction: Transaction;
   onCategoryChange: (category: Category) => void;
+  onConfirm?: () => void;
 }
 
-export function TransactionItem({ transaction, onCategoryChange }: TransactionItemProps) {
+export function TransactionItem({ transaction, onCategoryChange, onConfirm }: TransactionItemProps) {
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  
+  // Determine verification status
+  const isUserConfirmed = transaction.isUserConfirmed || transaction.isManuallyCategized;
+  const needsReview = !isUserConfirmed && transaction.confidence < 0.8;
   
   const category = transaction.category || 'other';
   const info = CATEGORY_INFO[category] || { label: 'Other', labelDe: 'Sonstiges', icon: 'circle', color: '#6b7280' };
@@ -78,9 +83,24 @@ export function TransactionItem({ transaction, onCategoryChange }: TransactionIt
                   {info.labelDe}
                 </Text>
               </View>
-              {transaction.confidence < 0.7 && !transaction.isManuallyCategized && (
+              {/* Status Badge */}
+              {transaction.isManuallyCategized ? (
+                <View style={styles.userEditedBadge}>
+                  <Edit3 size={8} color="#8b5cf6" />
+                  <Text style={styles.userEditedText}>Bearbeitet</Text>
+                </View>
+              ) : transaction.isUserConfirmed ? (
+                <View style={styles.userConfirmedBadge}>
+                  <UserCheck size={8} color="#22c55e" />
+                  <Text style={styles.userConfirmedText}>Bestätigt</Text>
+                </View>
+              ) : transaction.confidence < 0.7 ? (
                 <View style={styles.lowConfidenceBadge}>
                   <Text style={styles.lowConfidenceText}>Unsicher</Text>
+                </View>
+              ) : (
+                <View style={styles.autoBadge}>
+                  <Text style={styles.autoText}>Auto</Text>
                 </View>
               )}
             </View>
@@ -135,12 +155,27 @@ export function TransactionItem({ transaction, onCategoryChange }: TransactionIt
               );
             })}
             
-            <Pressable
-              style={styles.cancelButton}
-              onPress={() => setShowCategoryPicker(false)}
-            >
-              <Text style={styles.cancelButtonText}>Abbrechen</Text>
-            </Pressable>
+            {/* Action Buttons */}
+            <View style={styles.modalActions}>
+              {!isUserConfirmed && onConfirm && (
+                <TouchableOpacity
+                  style={styles.confirmButton}
+                  onPress={() => {
+                    onConfirm();
+                    setShowCategoryPicker(false);
+                  }}
+                >
+                  <CheckCircle2 size={18} color="#22c55e" />
+                  <Text style={styles.confirmButtonText}>Bestätigen</Text>
+                </TouchableOpacity>
+              )}
+              <Pressable
+                style={styles.cancelButton}
+                onPress={() => setShowCategoryPicker(false)}
+              >
+                <Text style={styles.cancelButtonText}>Schließen</Text>
+              </Pressable>
+            </View>
           </View>
         </Pressable>
       </Modal>
@@ -328,8 +363,25 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#374151',
   },
+  modalActions: {
+    marginTop: 12,
+    gap: 8,
+  },
+  confirmButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    backgroundColor: '#ecfdf5',
+    borderRadius: 12,
+  },
+  confirmButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#22c55e',
+  },
   cancelButton: {
-    marginTop: 8,
     paddingVertical: 14,
     alignItems: 'center',
   },
@@ -337,5 +389,45 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#6b7280',
+  },
+  // Status badges
+  userEditedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#f3e8ff',
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  userEditedText: {
+    fontSize: 8,
+    color: '#8b5cf6',
+    fontWeight: '600',
+  },
+  userConfirmedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  userConfirmedText: {
+    fontSize: 8,
+    color: '#22c55e',
+    fontWeight: '600',
+  },
+  autoBadge: {
+    backgroundColor: '#f3f4f6',
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  autoText: {
+    fontSize: 8,
+    color: '#9ca3af',
+    fontWeight: '500',
   },
 });

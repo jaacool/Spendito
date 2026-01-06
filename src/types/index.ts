@@ -32,7 +32,8 @@ export interface Transaction {
   category: Category;
   description: string; // Verwendungszweck
   counterparty: string; // Auftraggeber/Empfänger
-  isManuallyCategized: boolean;
+  isManuallyCategized: boolean; // User changed the category
+  isUserConfirmed?: boolean; // User confirmed the auto-categorization is correct
   confidence: number; // 0-1, how confident the categorization is
   rawData?: string; // Original bank data
   // Multi-Account Support
@@ -41,6 +42,7 @@ export interface Transaction {
   linkedTransactionId?: string; // Link to duplicate transaction
   isDuplicate?: boolean; // True if this is a duplicate (hidden from totals)
   duplicateReason?: string; // Why it was marked as duplicate
+  linkedPayPalRef?: string; // Reference to linked PayPal transaction
 }
 
 // Duplicate detection result

@@ -36,6 +36,7 @@ export default function HomeScreen() {
     setSelectedYear,
     setSideMenuOpen,
     updateTransactionCategory,
+    confirmTransaction,
     refreshData,
     loadMockData,
   } = useApp();
@@ -341,6 +342,7 @@ export default function HomeScreen() {
                       key={transaction.id}
                       transaction={transaction}
                       onCategoryChange={(category) => handleCategoryChange(transaction.id, category)}
+                      onConfirm={() => confirmTransaction(transaction.id)}
                     />
                   ))}
                 </View>
@@ -370,6 +372,8 @@ export default function HomeScreen() {
         onClose={() => setIsReviewOpen(false)}
         transactions={transactions}
         onApplyChange={updateTransactionCategory}
+        selectedYear={selectedYear}
+        availableYears={availableYears}
       />
 
       {/* Settings Modal */}
