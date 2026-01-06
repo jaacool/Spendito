@@ -58,18 +58,21 @@ export default function HomeScreen() {
     setRefreshing(false);
   };
 
-  const filteredTransactions = transactions.filter(t => {
-    // Filter by type
-    if (activeTab !== 'all' && t.type !== activeTab) return false;
-    // Filter by account (with fallback for old transactions)
-    const txAccount = t.sourceAccount || 'volksbank';
-    if (accountFilter !== 'all' && txAccount !== accountFilter) return false;
-    // Filter duplicates
-    if (!showDuplicates && t.isDuplicate) return false;
-    // Filter only open/unverified transactions
-    if (showOnlyOpen && (t.isUserConfirmed || t.isManuallyCategized)) return false;
-    return true;
-  });
+  const filteredTransactions = transactions
+    .filter(t => {
+      // Filter by type
+      if (activeTab !== 'all' && t.type !== activeTab) return false;
+      // Filter by account (with fallback for old transactions)
+      const txAccount = t.sourceAccount || 'volksbank';
+      if (accountFilter !== 'all' && txAccount !== accountFilter) return false;
+      // Filter duplicates
+      if (!showDuplicates && t.isDuplicate) return false;
+      // Filter only open/unverified transactions
+      if (showOnlyOpen && (t.isUserConfirmed || t.isManuallyCategized)) return false;
+      return true;
+    })
+    // Sort by date, newest first
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   // Count duplicates and open transactions for display
   const duplicateCount = transactions.filter(t => t.isDuplicate).length;
