@@ -40,13 +40,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         await storageService.initialize();
         
         const years = storageService.getAvailableYears();
-        if (years.length === 0) {
-          // Load mock data if no data exists
-          await loadMockDataInternal();
-        } else {
+        if (years.length > 0) {
           setAvailableYears(years);
           updateYearData(selectedYear);
         }
+        // No mock data - start with empty state
       } catch (error) {
         console.error('Failed to initialize:', error);
       } finally {
