@@ -36,6 +36,7 @@ export interface BackendTransaction {
   counterparty_name?: string;
   description?: string;
   category?: string;
+  external_id?: string;
 }
 
 export interface InitResult {
@@ -49,36 +50,21 @@ export interface InitResult {
 }
 
 class BackendApiService {
-  private userId: string | null = null;
+  private userId: string = 'spendito_main_user'; // Fixed ID for single-user sync
 
   /**
    * Get current user ID
    */
-  async getUserId(): Promise<string | null> {
-    if (!this.userId) {
-      await this.initialize();
-    }
+  async getUserId(): Promise<string> {
     return this.userId;
   }
 
   /**
-   * Set user ID for sync
-   */
-  async setUserId(newUserId: string): Promise<void> {
-    this.userId = newUserId;
-    await AsyncStorage.setItem(STORAGE_KEYS.USER_ID, newUserId);
-  }
-
-  /**
-   * Initialize service and get/create user ID
+   * Initialize service (simplified for fixed ID)
    */
   async initialize(): Promise<void> {
-    this.userId = await AsyncStorage.getItem(STORAGE_KEYS.USER_ID);
-    if (!this.userId) {
-      // Generate a simple user ID for single-user setup
-      this.userId = 'user_' + Date.now().toString(36);
-      await AsyncStorage.setItem(STORAGE_KEYS.USER_ID, this.userId);
-    }
+    // No generation needed, using fixed ID
+    await AsyncStorage.setItem(STORAGE_KEYS.USER_ID, this.userId);
   }
 
   /**
@@ -244,7 +230,7 @@ class BackendApiService {
         isManuallyCategized: false,
         confidence,
         sourceAccount: 'volksbank',
-        externalId: tx.id,
+        externalId: tx.external_id || tx.id,
       } as Transaction;
     });
   }
@@ -408,7 +394,7 @@ class BackendApiService {
       return {
         id: tx.id,
         date: tx.date,
-        amount: Math.abs(tx.amount),
+        amount: tx.amount, // Keep signed amount
         type: isIncome ? 'income' : 'expense',
         category,
         description: tx.description || tx.counterparty_name || 'PayPal',
@@ -416,7 +402,7 @@ class BackendApiService {
         isManuallyCategized: false,
         confidence,
         sourceAccount: 'paypal',
-        externalId: tx.id,
+        externalId: tx.external_id || tx.id,
       } as Transaction;
     });
   }

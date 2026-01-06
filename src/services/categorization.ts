@@ -1,9 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Category, CategoryRule, Transaction, INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '../types';
 import { supabase, SUPABASE_TABLES, isSupabaseConfigured } from './supabase';
+import { backendApiService } from './backendApi';
 
 const RULES_STORAGE_KEY = '@spendito_category_rules';
-const USER_ID_KEY = 'backend_user_id'; // Reuse the same user ID as backendApi
 
 // Default rules for initial categorization
 const DEFAULT_RULES: Omit<CategoryRule, 'id' | 'createdAt' | 'matchCount'>[] = [
@@ -42,9 +42,9 @@ class CategorizationService {
         await this.saveRules();
       }
 
-      // 2. Try to sync with Supabase if userId exists
-      const userId = await AsyncStorage.getItem(USER_ID_KEY);
-      if (userId) {
+      // 2. Try to sync with Supabase
+      if (isSupabaseConfigured) {
+        const userId = await backendApiService.getUserId();
         await this.syncWithSupabase(userId);
       }
     } catch (error) {
@@ -91,9 +91,9 @@ class CategorizationService {
     try {
       await AsyncStorage.setItem(RULES_STORAGE_KEY, JSON.stringify(this.rules));
       
-      // Sync to Supabase if userId exists and Supabase is configured
-      const userId = await AsyncStorage.getItem(USER_ID_KEY);
-      if (userId && isSupabaseConfigured) {
+      // Sync to Supabase if configured
+      if (isSupabaseConfigured) {
+        const userId = await backendApiService.getUserId();
         const rulesToSync = this.rules.map(r => ({
           id: r.id,
           user_id: userId,

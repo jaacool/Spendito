@@ -1,9 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Transaction, YearSummary, CategorySummary, INCOME_CATEGORIES, EXPENSE_CATEGORIES, CATEGORY_INFO } from '../types';
 import { supabase, SUPABASE_TABLES, isSupabaseConfigured } from './supabase';
+import { backendApiService } from './backendApi';
 
 const TRANSACTIONS_KEY = '@spendito_transactions';
-const USER_ID_KEY = 'backend_user_id';
 
 class StorageService {
   private transactions: Transaction[] = [];
@@ -19,9 +19,9 @@ class StorageService {
         this.transactions = JSON.parse(stored);
       }
 
-      // 2. Try to sync with Supabase if userId exists
-      const userId = await AsyncStorage.getItem(USER_ID_KEY);
-      if (userId) {
+      // 2. Try to sync with Supabase
+      if (isSupabaseConfigured) {
+        const userId = await backendApiService.getUserId();
         await this.syncWithSupabase(userId);
       }
     } catch (error) {
@@ -82,9 +82,9 @@ class StorageService {
     try {
       await AsyncStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(this.transactions));
       
-      // Sync to Supabase if userId exists and Supabase is configured
-      const userId = await AsyncStorage.getItem(USER_ID_KEY);
-      if (userId && isSupabaseConfigured) {
+      // Sync to Supabase if configured
+      if (isSupabaseConfigured) {
+        const userId = await backendApiService.getUserId();
         await this.pushToSupabase(userId, this.transactions);
       }
     } catch (error) {

@@ -103,7 +103,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   async function refreshData() {
     setIsLoading(true);
     try {
-      await storageService.initialize();
+      await categorizationService.initialize(true);
+      await storageService.initialize(true);
       updateYearData(selectedYear);
     } finally {
       setIsLoading(false);
