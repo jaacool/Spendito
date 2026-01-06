@@ -5,7 +5,6 @@ import { useSettings, UIScale } from '../context/SettingsContext';
 import { backendApiService } from '../services/backendApi';
 import { storageService } from '../services/storage';
 import { categorizationService } from '../services/categorization';
-import { isSupabaseConfigured } from '../services/supabase';
 import Constants from 'expo-constants';
 
 import { useApp } from '../context/AppContext';
@@ -701,52 +700,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             </View>
           </View>
 
-          {/* Cloud Sync Section */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <RefreshCw size={16} color="#6b7280" />
-              <Text style={styles.sectionTitle}>Cloud-Backup</Text>
-            </View>
-            
-            <View style={styles.syncCard}>
-              <View style={styles.syncStatusHeader}>
-                <View style={[styles.statusDot, { backgroundColor: isSupabaseConfigured ? '#22c55e' : '#f59e0b' }]} />
-                <Text style={styles.syncStatusText}>
-                  {isSupabaseConfigured ? 'Cloud-Backup aktiv' : 'Cloud-Backup nicht konfiguriert'}
-                </Text>
-              </View>
-
-              <Text style={styles.syncHint}>
-                {isSupabaseConfigured 
-                  ? 'Deine Daten (PayPal-Importe, Kategorien und Regeln) werden automatisch mit deiner privaten Cloud synchronisiert.'
-                  : 'Bitte trage deine Supabase-Zugangsdaten in die .env Datei ein, um das automatische Backup zu aktivieren.'}
-              </Text>
-              
-              {isSupabaseConfigured && (
-                <Pressable 
-                  style={styles.manualSyncButton}
-                  onPress={async () => {
-                    setIsLoading(true);
-                    try {
-                      await storageService.initialize(true);
-                      await categorizationService.initialize(true);
-                      await refreshData();
-                      Alert.alert('Erfolg', 'Daten wurden erfolgreich mit der Cloud synchronisiert.');
-                    } catch (error) {
-                      Alert.alert('Fehler', 'Synchronisation fehlgeschlagen.');
-                    } finally {
-                      setIsLoading(false);
-                    }
-                  }}
-                  disabled={isLoading}
-                >
-                  <RefreshCw size={14} color="#0066b3" />
-                  <Text style={styles.manualSyncButtonText}>Jetzt synchronisieren</Text>
-                </Pressable>
-              )}
-            </View>
-          </View>
-
           {/* Preview */}
             <View style={styles.previewSection}>
               <Text style={styles.previewLabel}>Vorschau</Text>
@@ -1194,32 +1147,6 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-  },
-  syncStatusText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  manualSyncButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 12,
-    paddingVertical: 8,
-    backgroundColor: '#e0f2fe',
-    borderRadius: 8,
-  },
-  manualSyncButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#0066b3',
-  },
-  syncHint: {
-    fontSize: 11,
-    color: '#9ca3af',
-    marginTop: 8,
-    lineHeight: 14,
   },
   syncButton: {
     flexDirection: 'row',

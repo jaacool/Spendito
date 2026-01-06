@@ -1,7 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Category, CategoryRule, Transaction, INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '../types';
-import { supabase, SUPABASE_TABLES, isSupabaseConfigured } from './supabase';
-import { backendApiService } from './backendApi';
 
 const RULES_STORAGE_KEY = '@spendito_category_rules';
 
@@ -41,12 +39,6 @@ class CategorizationService {
         }));
         await this.saveRules();
       }
-
-      // 2. Try to sync with Supabase
-      if (isSupabaseConfigured) {
-        const userId = await backendApiService.getUserId();
-        await this.syncWithSupabase(userId);
-      }
     } catch (error) {
       console.error('Failed to load categorization rules:', error);
       this.rules = [];
@@ -55,64 +47,9 @@ class CategorizationService {
     this.initialized = true;
   }
 
-  private async syncWithSupabase(userId: string): Promise<void> {
-    if (!isSupabaseConfigured) return;
-    try {
-      const { data, error } = await supabase
-        .from(SUPABASE_TABLES.CATEGORY_RULES)
-        .select('*')
-        .eq('user_id', userId);
-
-      if (error) throw error;
-
-      if (data && data.length > 0) {
-        // Merge or replace rules. For now, we replace with remote if remote exists
-        // as remote is the source of truth for multi-device
-        this.rules = data.map(r => ({
-          id: r.id,
-          pattern: r.pattern,
-          category: r.category as Category,
-          priority: r.priority,
-          matchCount: r.match_count,
-          createdAt: r.created_at,
-          isUserDefined: r.is_user_defined,
-          minAmount: r.min_amount,
-          maxAmount: r.max_amount,
-        }));
-        await AsyncStorage.setItem(RULES_STORAGE_KEY, JSON.stringify(this.rules));
-        console.log(`[Categorization] Synced ${this.rules.length} rules from Supabase`);
-      }
-    } catch (error) {
-      console.error('[Categorization] Supabase sync failed:', error);
-    }
-  }
-
   private async saveRules(): Promise<void> {
     try {
       await AsyncStorage.setItem(RULES_STORAGE_KEY, JSON.stringify(this.rules));
-      
-      // Sync to Supabase if configured
-      if (isSupabaseConfigured) {
-        const userId = await backendApiService.getUserId();
-        const rulesToSync = this.rules.map(r => ({
-          id: r.id,
-          user_id: userId,
-          pattern: r.pattern,
-          category: r.category,
-          priority: r.priority,
-          match_count: r.matchCount,
-          is_user_defined: r.isUserDefined,
-          min_amount: r.minAmount,
-          max_amount: r.maxAmount,
-          created_at: r.createdAt,
-        }));
-
-        const { error } = await supabase
-          .from(SUPABASE_TABLES.CATEGORY_RULES)
-          .upsert(rulesToSync);
-
-        if (error) console.error('[Categorization] Failed to push rules to Supabase:', error);
-      }
     } catch (error) {
       console.error('Failed to save categorization rules:', error);
     }
