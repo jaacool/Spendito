@@ -366,28 +366,31 @@ class BackendApiService {
     await this.initialize();
     await categorizationService.initialize();
 
-    let url = `${BACKEND_URL}/api/paypal/transactions/${this.userId}`;
+    // Use the generic transactions endpoint which is more robust
+    let url = `${BACKEND_URL}/api/transactions/${this.userId}`;
     const params = new URLSearchParams();
     if (fromDate) params.append('from', fromDate);
     if (toDate) params.append('to', toDate);
+    // Filter for PayPal account if needed, but for now we want to see everything
+    // that was imported.
     if (params.toString()) url += `?${params.toString()}`;
 
+    console.log(`[PayPal] Fetching via generic endpoint: ${url}`);
     const response = await fetch(url);
-    const data: BackendTransaction[] = await response.json();
+    const data: any[] = await response.json();
 
-    return data.map((tx) => {
+    return data.filter(tx => tx.bank_id === 'paypal' || tx.account_number === 'paypal').map((tx) => {
       const isIncome = tx.amount > 0;
       const { category, confidence } = tx.category 
         ? { category: tx.category as any, confidence: 1 }
         : categorizationService.categorize(tx.description || tx.counterparty_name || '', tx.amount);
 
-      // Log the mapping to ensure date and amount are correct
       console.log(`[PayPal] Mapping TX: ${tx.id}, Date: ${tx.date}, Amount: ${tx.amount}`);
 
       return {
         id: tx.id,
-        date: tx.date, // Use raw ISO string from backend
-        amount: Math.abs(tx.amount), // Use absolute for storage logic
+        date: tx.date,
+        amount: Math.abs(tx.amount),
         type: isIncome ? 'income' : 'expense',
         category,
         description: tx.description || tx.counterparty_name || 'PayPal',
