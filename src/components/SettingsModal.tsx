@@ -707,23 +707,34 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <Text style={styles.versionText}>Spendito v{appVersion}</Text>
               <Pressable 
                 style={styles.clearCacheButton}
-                onPress={() => {
-                  Alert.alert(
-                    'Cache löschen',
-                    'Alle lokalen Daten werden gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.',
-                    [
-                      { text: 'Abbrechen', style: 'cancel' },
-                      {
-                        text: 'Löschen',
-                        style: 'destructive',
-                        onPress: async () => {
-                          await storageService.clearAll();
-                          Alert.alert('Erfolg', 'Cache wurde gelöscht. Bitte lade die App neu.');
-                          onClose();
+                onPress={async () => {
+                  const title = 'Cache löschen';
+                  const message = 'Alle lokalen Daten werden gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.';
+                  
+                  if (typeof window !== 'undefined' && window.confirm) {
+                    if (window.confirm(`${title}\n\n${message}`)) {
+                      await storageService.clearAll();
+                      alert('Cache wurde gelöscht. Die Seite wird nun neu geladen.');
+                      window.location.reload();
+                    }
+                  } else {
+                    Alert.alert(
+                      title,
+                      message,
+                      [
+                        { text: 'Abbrechen', style: 'cancel' },
+                        {
+                          text: 'Löschen',
+                          style: 'destructive',
+                          onPress: async () => {
+                            await storageService.clearAll();
+                            Alert.alert('Erfolg', 'Cache wurde gelöscht.');
+                            onClose();
+                          },
                         },
-                      },
-                    ]
-                  );
+                      ]
+                    );
+                  }
                 }}
               >
                 <Trash2 size={14} color="#ef4444" />
