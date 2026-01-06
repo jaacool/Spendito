@@ -1,5 +1,5 @@
 // Transaction Types
-export type TransactionType = 'income' | 'expense';
+export type TransactionType = 'income' | 'expense' | 'transfer';
 
 export type SourceAccount = 'volksbank' | 'paypal';
 
@@ -16,7 +16,9 @@ export type ExpenseCategory =
   | 'administration' // Verwaltung
   | 'other_expense'; // Sonstiges
 
-export type Category = IncomeCategory | ExpenseCategory;
+export type TransferCategory = 'transfer'; // Internal transfers between accounts
+
+export type Category = IncomeCategory | ExpenseCategory | TransferCategory;
 
 // Account metadata
 export const ACCOUNT_INFO: Record<SourceAccount, { label: string; color: string; icon: string }> = {
@@ -94,7 +96,10 @@ export const CATEGORY_INFO: Record<Category, { label: string; labelDe: string; i
   transport: { label: 'Transport', labelDe: 'Transport', icon: 'truck', color: '#f97316' },
   administration: { label: 'Administration', labelDe: 'Verwaltung', icon: 'file-text', color: '#64748b' },
   other_expense: { label: 'Other', labelDe: 'Sonstiges', icon: 'minus-circle', color: '#94a3b8' },
+  // Transfer
+  transfer: { label: 'Transfer', labelDe: 'Umbuchung', icon: 'arrow-left-right', color: '#a855f7' },
 };
 
 export const INCOME_CATEGORIES: IncomeCategory[] = ['donation', 'protection_fee', 'membership', 'other_income'];
 export const EXPENSE_CATEGORIES: ExpenseCategory[] = ['veterinary', 'foster_care', 'transport', 'administration', 'other_expense'];
+export const TRANSFER_CATEGORIES: TransferCategory[] = ['transfer'];

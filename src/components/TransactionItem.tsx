@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Pressable, Modal, TouchableOpacity } from 'reac
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { ChevronRight, Check, Building2, Wallet, Link2, CheckCircle2 } from 'lucide-react-native';
-import { Transaction, Category, CATEGORY_INFO, INCOME_CATEGORIES, EXPENSE_CATEGORIES, ACCOUNT_INFO } from '../types';
+import { Transaction, Category, CATEGORY_INFO, INCOME_CATEGORIES, EXPENSE_CATEGORIES, TRANSFER_CATEGORIES, ACCOUNT_INFO } from '../types';
 
 interface TransactionItemProps {
   transaction: Transaction;
@@ -23,6 +23,7 @@ export function TransactionItem({ transaction, onCategoryChange, onConfirm }: Tr
   const sourceAccount = transaction.sourceAccount || 'volksbank';
   const accountInfo = ACCOUNT_INFO[sourceAccount] || { label: 'Volksbank', color: '#0066b3' };
   const isIncome = transaction.type === 'income';
+  const isTransfer = transaction.type === 'transfer' || transaction.category === 'transfer';
   const isDuplicate = transaction.isDuplicate;
   
   const formatCurrency = (amount: number) => {
@@ -36,7 +37,8 @@ export function TransactionItem({ transaction, onCategoryChange, onConfirm }: Tr
     return format(new Date(dateString), 'd. MMM', { locale: de });
   };
 
-  const categories = isIncome ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+  // Show all categories: income, expense, and transfer
+  const categories = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES, ...TRANSFER_CATEGORIES];
 
   return (
     <>

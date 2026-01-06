@@ -98,8 +98,13 @@ class StorageService {
       expenseByCategory[cat] = { total: 0, count: 0 };
     });
     
-    // Calculate totals
+    // Calculate totals (exclude transfers and duplicates from statistics)
     transactions.forEach(t => {
+      // Skip transfers and duplicates - they don't count as income or expense
+      if (t.category === 'transfer' || t.type === 'transfer' || t.isDuplicate) {
+        return;
+      }
+      
       if (t.type === 'income') {
         totalIncome += t.amount;
         if (incomeByCategory[t.category]) {

@@ -1,10 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Category, CategoryRule, Transaction, INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '../types';
+import { Category, CategoryRule, Transaction, INCOME_CATEGORIES, EXPENSE_CATEGORIES, TRANSFER_CATEGORIES } from '../types';
 
 const RULES_STORAGE_KEY = '@spendito_category_rules';
 
 // Default rules for initial categorization
 const DEFAULT_RULES: Omit<CategoryRule, 'id' | 'createdAt' | 'matchCount'>[] = [
+  // Transfer patterns (highest priority - check first)
+  { pattern: 'guthaben-transfer|umbuchung|übertrag|transfer zwischen|eigenes konto|paypal guthaben', category: 'transfer', priority: 150, isUserDefined: false },
+  { pattern: 'paypal.*einzahlung|einzahlung.*paypal|paypal.*auszahlung|auszahlung.*paypal', category: 'transfer', priority: 150, isUserDefined: false },
+  
   // Income patterns
   { pattern: 'spende|donation|geschenk', category: 'donation', priority: 100, isUserDefined: false },
   { pattern: 'schutzgebühr|schutzgeb|adoption', category: 'protection_fee', priority: 100, isUserDefined: false },
@@ -66,6 +70,15 @@ class CategorizationService {
       try {
         const regex = new RegExp(rule.pattern, 'i');
         if (regex.test(normalizedDesc)) {
+          // Transfer category can match any transaction type
+          const isTransferCategory = TRANSFER_CATEGORIES.includes(rule.category as any);
+          if (isTransferCategory) {
+            rule.matchCount++;
+            this.saveRules();
+            const confidence = Math.min(0.5 + (rule.matchCount * 0.05) + (rule.priority / 200), 0.99);
+            return { category: rule.category, confidence };
+          }
+          
           // Check if category type matches transaction type
           const isExpenseCategory = EXPENSE_CATEGORIES.includes(rule.category as any);
           if (isExpense === isExpenseCategory) {

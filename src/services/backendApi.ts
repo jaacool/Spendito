@@ -228,11 +228,17 @@ class BackendApiService {
         ? { category: tx.category as any, confidence: 1 }
         : categorizationService.categorize(tx.description || tx.counterparty_name || '', tx.amount);
 
+      // Determine transaction type - transfers are a special type
+      let txType: 'income' | 'expense' | 'transfer' = isIncome ? 'income' : 'expense';
+      if (category === 'transfer') {
+        txType = 'transfer';
+      }
+
       return {
         id: tx.id,
         date: new Date(tx.date).toISOString(),
         amount: tx.amount,
-        type: isIncome ? 'income' : 'expense',
+        type: txType,
         category,
         description: tx.description || tx.counterparty_name || 'Unbekannt',
         counterparty: tx.counterparty_name || 'Unbekannt',
@@ -398,13 +404,19 @@ class BackendApiService {
         ? { category: tx.category as any, confidence: 1 }
         : categorizationService.categorize(tx.description || tx.counterparty_name || '', tx.amount);
 
-      console.log(`[PayPal] Mapping TX: ${tx.id}, Date: ${tx.date}, Amount: ${tx.amount}`);
+      // Determine transaction type - transfers are a special type
+      let txType: 'income' | 'expense' | 'transfer' = isIncome ? 'income' : 'expense';
+      if (category === 'transfer') {
+        txType = 'transfer';
+      }
+
+      console.log(`[PayPal] Mapping TX: ${tx.id}, Date: ${tx.date}, Amount: ${tx.amount}, Category: ${category}`);
 
       return {
         id: tx.id,
         date: tx.date,
         amount: tx.amount, // Keep signed amount
-        type: isIncome ? 'income' : 'expense',
+        type: txType,
         category,
         description: tx.description || tx.counterparty_name || 'PayPal',
         counterparty: tx.counterparty_name || 'PayPal',
