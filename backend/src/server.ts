@@ -111,7 +111,7 @@ app.get('/api/transactions/:userId', (req, res) => {
     const { from, to, account } = req.query;
     
     let query = `
-      SELECT t.*, a.account_number, a.iban, c.bank_name
+      SELECT t.*, a.account_number, a.iban, c.bank_name, c.bank_id
       FROM transactions t
       JOIN bank_accounts a ON t.account_id = a.id
       JOIN bank_connections c ON a.connection_id = c.id
