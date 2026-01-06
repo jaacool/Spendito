@@ -88,8 +88,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         confidence: 1.0,
       });
       
-      // Learn from correction
-      await categorizationService.learnFromCorrection(transaction.description, category);
+      // Learn from correction (including amount)
+      await categorizationService.learnFromCorrection(
+        transaction.description, 
+        category, 
+        transaction.amount
+      );
       
       // Refresh data
       updateYearData(selectedYear);

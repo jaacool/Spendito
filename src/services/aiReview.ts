@@ -7,6 +7,11 @@
 
 import { Transaction, Category, CATEGORY_INFO, INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '../types';
 import { categorizationService } from './categorization';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+// In a real app, this should be in an environment variable or secure storage
+const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 export interface ReviewResult {
   transactionId: string;
@@ -91,35 +96,62 @@ Behalte die aktuelle Kategorie bei, wenn sie korrekt erscheint.`;
   }
 
   /**
-   * Review transactions using AI
-   * In production, this would call the AI API
+   * Review transactions using AI (Gemini 1.5 Flash)
    */
   async reviewTransactions(transactions: Transaction[]): Promise<ReviewResult[]> {
-    if (!this.config) {
-      console.warn('AI Review not configured. Using rule-based review.');
+    if (!GEMINI_API_KEY) {
+      console.warn('Gemini API Key missing (EXPO_PUBLIC_GEMINI_API_KEY). Using rule-based review.');
       return this.ruleBasedReview(transactions);
     }
 
-    const prompt = this.generateReviewPrompt(transactions);
+    try {
+      const model = genAI.getGenerativeModel({ 
+        model: "gemini-1.5-flash",
+        generationConfig: {
+          responseMimeType: "application/json",
+        }
+      });
 
-    // In production, call the AI API:
-    // const response = await fetch(this.config.endpoint || 'https://api.openai.com/v1/chat/completions', {
-    //   method: 'POST',
-    //   headers: {
-    //     'Authorization': `Bearer ${this.config.apiKey}`,
-    //     'Content-Type': 'application/json',
-    //   },
-    //   body: JSON.stringify({
-    //     model: this.config.model,
-    //     messages: [{ role: 'user', content: prompt }],
-    //     temperature: 0.3,
-    //   }),
-    // });
-    // const data = await response.json();
-    // return this.parseAIResponse(data, transactions);
+      const prompt = this.generateReviewPrompt(transactions);
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+      
+      const parsedData = JSON.parse(text);
+      return this.mergeAIResults(parsedData.reviews, transactions);
+    } catch (error) {
+      console.error('Gemini API call failed:', error);
+      return this.ruleBasedReview(transactions);
+    }
+  }
 
-    // For now, use rule-based review
-    return this.ruleBasedReview(transactions);
+  /**
+   * Merge AI suggestions with original transactions
+   */
+  private mergeAIResults(aiReviews: any[], originalTransactions: Transaction[]): ReviewResult[] {
+    return originalTransactions.map(t => {
+      const aiReview = aiReviews.find(r => r.transactionId === t.id);
+      
+      if (!aiReview) {
+        return {
+          transactionId: t.id,
+          originalCategory: t.category,
+          suggestedCategory: t.category,
+          confidence: 1.0,
+          reasoning: 'Keine KI-Empfehlung verfügbar.',
+          needsReview: false,
+        };
+      }
+
+      return {
+        transactionId: t.id,
+        originalCategory: t.category,
+        suggestedCategory: aiReview.suggestedCategory as Category,
+        confidence: aiReview.confidence,
+        reasoning: aiReview.reasoning,
+        needsReview: aiReview.needsReview,
+      };
+    });
   }
 
   /**
@@ -174,17 +206,31 @@ Behalte die aktuelle Kategorie bei, wenn sie korrekt erscheint.`;
   }
 
   /**
-   * Apply suggested changes from review
+   * Apply suggested changes from review and LEARN from them
    */
   async applySuggestedChanges(
     results: ReviewResult[],
+    allTransactions: Transaction[],
     onUpdate: (id: string, category: Category) => Promise<void>
   ): Promise<number> {
     let appliedCount = 0;
 
     for (const result of results) {
       if (result.needsReview && result.suggestedCategory !== result.originalCategory) {
+        // Find the full transaction to get description and amount for learning
+        const transaction = allTransactions.find(t => t.id === result.transactionId);
+        
         await onUpdate(result.transactionId, result.suggestedCategory);
+        
+        // LEARN from the AI correction
+        if (transaction) {
+          await categorizationService.learnFromCorrection(
+            transaction.description,
+            result.suggestedCategory,
+            transaction.amount
+          );
+        }
+        
         appliedCount++;
       }
     }

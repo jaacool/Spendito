@@ -68,6 +68,10 @@ class CategorizationService {
           // Check if category type matches transaction type
           const isExpenseCategory = EXPENSE_CATEGORIES.includes(rule.category as any);
           if (isExpense === isExpenseCategory) {
+            // Check amount range if specified
+            if (rule.minAmount !== undefined && Math.abs(amount) < rule.minAmount) continue;
+            if (rule.maxAmount !== undefined && Math.abs(amount) > rule.maxAmount) continue;
+
             // Increase match count for learning
             rule.matchCount++;
             this.saveRules();
@@ -90,7 +94,13 @@ class CategorizationService {
     };
   }
 
-  async addRule(pattern: string, category: Category, isUserDefined = true): Promise<CategoryRule> {
+  async addRule(
+    pattern: string, 
+    category: Category, 
+    isUserDefined = true, 
+    minAmount?: number, 
+    maxAmount?: number
+  ): Promise<CategoryRule> {
     const newRule: CategoryRule = {
       id: `rule_${Date.now()}`,
       pattern,
@@ -99,6 +109,8 @@ class CategorizationService {
       matchCount: 0,
       createdAt: new Date().toISOString(),
       isUserDefined,
+      minAmount,
+      maxAmount,
     };
     
     this.rules.push(newRule);
@@ -106,31 +118,53 @@ class CategorizationService {
     return newRule;
   }
 
-  async learnFromCorrection(description: string, correctCategory: Category): Promise<void> {
+  async learnFromCorrection(description: string, correctCategory: Category, amount?: number): Promise<void> {
     // Extract keywords from description for new rule
     const words = description.toLowerCase()
       .replace(/[^a-zäöüß\s]/g, '')
       .split(/\s+/)
       .filter(word => word.length > 3);
     
-    if (words.length === 0) return;
+    if (words.length === 0 && amount === undefined) return;
     
     // Create pattern from significant words
-    const pattern = words.slice(0, 3).join('|');
+    const pattern = words.length > 0 ? words.slice(0, 3).join('|') : '.*';
+    
+    // Define amount range (e.g., +/- 10%)
+    let minAmt: number | undefined;
+    let maxAmt: number | undefined;
+    
+    if (amount !== undefined) {
+      const absAmount = Math.abs(amount);
+      minAmt = Math.floor(absAmount * 0.9);
+      maxAmt = Math.ceil(absAmount * 1.1);
+      
+      // Special case for Protection Fee (Schutzgebühr) around 500
+      if (correctCategory === 'protection_fee' && absAmount >= 400 && absAmount <= 600) {
+        minAmt = 400;
+        maxAmt = 600;
+      }
+    }
     
     // Check if similar rule exists
     const existingRule = this.rules.find(r => 
       r.category === correctCategory && 
-      words.some(w => r.pattern.includes(w))
+      (words.some(w => r.pattern.includes(w)) || (amount !== undefined && r.minAmount !== undefined))
     );
     
     if (existingRule) {
       // Boost existing rule
       existingRule.priority += 10;
       existingRule.matchCount++;
+      
+      // Update amount range if it's more specific now
+      if (amount !== undefined) {
+        existingRule.minAmount = existingRule.minAmount ? Math.min(existingRule.minAmount, minAmt!) : minAmt;
+        existingRule.maxAmount = existingRule.maxAmount ? Math.max(existingRule.maxAmount, maxAmt!) : maxAmt;
+      }
     } else {
       // Create new rule
-      await this.addRule(pattern, correctCategory, true);
+      await this.addRule(pattern, correctCategory, true, minAmt, maxAmt);
     }
     
     await this.saveRules();

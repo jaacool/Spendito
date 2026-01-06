@@ -59,6 +59,8 @@ export interface CategoryRule {
   matchCount: number; // How many times this rule was used
   createdAt: string;
   isUserDefined: boolean;
+  minAmount?: number; // Optional amount range for categorization
+  maxAmount?: number;
 }
 
 export interface CategorySummary {
