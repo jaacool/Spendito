@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Category, CategoryRule, Transaction, INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '../types';
-import { supabase, SUPABASE_TABLES } from './supabase';
+import { supabase, SUPABASE_TABLES, isSupabaseConfigured } from './supabase';
 
 const RULES_STORAGE_KEY = '@spendito_category_rules';
 const USER_ID_KEY = 'backend_user_id'; // Reuse the same user ID as backendApi
@@ -56,6 +56,7 @@ class CategorizationService {
   }
 
   private async syncWithSupabase(userId: string): Promise<void> {
+    if (!isSupabaseConfigured) return;
     try {
       const { data, error } = await supabase
         .from(SUPABASE_TABLES.CATEGORY_RULES)
@@ -90,9 +91,9 @@ class CategorizationService {
     try {
       await AsyncStorage.setItem(RULES_STORAGE_KEY, JSON.stringify(this.rules));
       
-      // Sync to Supabase if userId exists
+      // Sync to Supabase if userId exists and Supabase is configured
       const userId = await AsyncStorage.getItem(USER_ID_KEY);
-      if (userId) {
+      if (userId && isSupabaseConfigured) {
         const rulesToSync = this.rules.map(r => ({
           id: r.id,
           user_id: userId,
