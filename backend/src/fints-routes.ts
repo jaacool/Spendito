@@ -146,8 +146,27 @@ router.post('/select-tan-method', async (req, res) => {
   try {
     const { client, connectionId } = session;
 
-    // Select TAN method
-    client.selectTanMethod(tanMethodId);
+    // Check available TAN methods
+    const availableMethods = client.config.availableTanMethods || [];
+    console.log('[FinTS] Available TAN methods:', JSON.stringify(availableMethods, null, 2));
+    
+    // Try to select TAN method
+    try {
+      client.selectTanMethod(Number(tanMethodId));
+    } catch (tanError: any) {
+      console.error('[FinTS] TAN method selection error:', tanError.message);
+      
+      // Check if this is a decoupled TAN method (like 946 = VR-SecureGo Plus)
+      // These methods require app-based approval without entering a TAN
+      if (tanError.message.includes('not supported')) {
+        return res.status(400).json({ 
+          error: `TAN-Verfahren ${tanMethodId} wird von dieser App noch nicht unterstützt. Bitte nutze ein anderes TAN-Verfahren (z.B. SMS-TAN oder chipTAN) oder warte auf ein Update.`,
+          details: 'Decoupled TAN methods like VR-SecureGo Plus (946) require special handling that is not yet implemented.',
+          availableMethods: availableMethods.map((m: any) => ({ id: m.id, name: m.name }))
+        });
+      }
+      throw tanError;
+    }
 
     // Update connection with selected TAN method
     db.prepare(`
