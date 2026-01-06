@@ -560,15 +560,22 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       </View>
 
                       <View style={styles.formButtons}>
-                        <Pressable 
-                          style={styles.cancelButton}
+                        <TouchableOpacity 
+                          style={[styles.cancelButton, { cursor: 'pointer' } as any]}
                           onPress={handleCancelBankForm}
+                          activeOpacity={0.7}
                         >
                           <Text style={styles.cancelButtonText}>Abbrechen</Text>
-                        </Pressable>
-                        <Pressable 
-                          style={[styles.submitButton, isLoading && styles.buttonDisabled]}
-                          onPress={handleSubmitBankForm}
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                          style={[styles.submitButton, isLoading && styles.buttonDisabled, { cursor: 'pointer' } as any]}
+                          onPress={() => {
+                            console.log('[Bank] Submit button pressed, isLoading:', isLoading);
+                            if (!isLoading) {
+                              handleSubmitBankForm();
+                            }
+                          }}
+                          activeOpacity={0.7}
                           disabled={isLoading}
                         >
                           {isLoading ? (
@@ -576,7 +583,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           ) : (
                             <Text style={styles.submitButtonText}>Verbinden</Text>
                           )}
-                        </Pressable>
+                        </TouchableOpacity>
                       </View>
                     </>
                   )}
