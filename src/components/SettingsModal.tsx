@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Modal, Pressable, ActivityIndicator, ScrollView, TextInput, Alert, Linking } from 'react-native';
-import { X, Type, Minus, Circle, Plus, Building2, Wallet, Link, Unlink, CheckCircle2, RefreshCw, Eye, EyeOff, ExternalLink } from 'lucide-react-native';
+import { X, Type, Minus, Circle, Plus, Building2, Wallet, Link, Unlink, CheckCircle2, RefreshCw, Eye, EyeOff, ExternalLink, Trash2 } from 'lucide-react-native';
 import { useSettings, UIScale } from '../context/SettingsContext';
 import { backendApiService } from '../services/backendApi';
+import { storageService } from '../services/storage';
 import Constants from 'expo-constants';
 
 interface SettingsModalProps {
@@ -704,6 +705,30 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             {/* Version */}
             <View style={styles.versionSection}>
               <Text style={styles.versionText}>Spendito v{appVersion}</Text>
+              <Pressable 
+                style={styles.clearCacheButton}
+                onPress={() => {
+                  Alert.alert(
+                    'Cache löschen',
+                    'Alle lokalen Daten werden gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.',
+                    [
+                      { text: 'Abbrechen', style: 'cancel' },
+                      {
+                        text: 'Löschen',
+                        style: 'destructive',
+                        onPress: async () => {
+                          await storageService.clearAll();
+                          Alert.alert('Erfolg', 'Cache wurde gelöscht. Bitte lade die App neu.');
+                          onClose();
+                        },
+                      },
+                    ]
+                  );
+                }}
+              >
+                <Trash2 size={14} color="#ef4444" />
+                <Text style={styles.clearCacheText}>Cache löschen</Text>
+              </Pressable>
             </View>
           </ScrollView>
         </Pressable>
@@ -1086,5 +1111,20 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     backgroundColor: '#e8f4fd',
     borderRadius: 6,
+  },
+  clearCacheButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#fef2f2',
+    borderRadius: 6,
+  },
+  clearCacheText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#ef4444',
   },
 });
