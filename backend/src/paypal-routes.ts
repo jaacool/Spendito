@@ -127,8 +127,11 @@ async function fetchUserTransactions(
     fields: 'all',
   });
 
+  const apiUrl = `${PAYPAL_API_BASE}/v1/reporting/transactions?${params.toString()}`;
+  console.log(`[PayPal] Requesting: ${apiUrl}`);
+
   const response = await fetch(
-    `${PAYPAL_API_BASE}/v1/reporting/transactions?${params.toString()}`,
+    apiUrl,
     {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -139,6 +142,7 @@ async function fetchUserTransactions(
 
   if (!response.ok) {
     const error = await response.text();
+    console.error(`[PayPal] API Error (${response.status}):`, error);
     throw new Error(`PayPal API error: ${error}`);
   }
 
@@ -368,7 +372,9 @@ router.post('/sync/:userId', async (req, res) => {
     }
 
     // Fetch transactions
+    console.log(`[PayPal] Fetching transactions for user ${userId} from ${start} to ${end}`);
     const transactions = await fetchUserTransactions(accessToken, start, end);
+    console.log(`[PayPal] Found ${transactions.length} total transactions`);
 
     // Store transactions
     const stmt = db.prepare(`
@@ -384,7 +390,10 @@ router.post('/sync/:userId', async (req, res) => {
       const payerInfo = tx.payer_info || {};
       
       const eventCode = txInfo.transaction_event_code || '';
+      console.log(`[PayPal] Processing TX: ${txInfo.transaction_id}, Code: ${eventCode}, Amount: ${txInfo.transaction_amount?.value}`);
+
       if (eventCode.startsWith('T11') || eventCode.startsWith('T12')) {
+        console.log(`[PayPal] Skipping currency conversion TX: ${txInfo.transaction_id}`);
         continue; // Skip currency conversions
       }
 
