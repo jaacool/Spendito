@@ -57,7 +57,7 @@ export interface CSVImportResult {
 }
 
 export interface CSVParseOptions {
-  skipPayPalTransfers?: boolean; // Skip PayPal bank transfers (default: true)
+  skipPayPalTransfers?: boolean; // Skip PayPal bank transfers (default: false - now categorized as transfer)
   markPayPalAsLinked?: boolean;  // Mark PayPal transfers as linked (default: true)
 }
 
@@ -173,7 +173,7 @@ export async function importVolksbankCSV(
   existingTransactions: Transaction[] = [],
   options: CSVParseOptions = {}
 ): Promise<CSVImportResult> {
-  const { skipPayPalTransfers = true, markPayPalAsLinked = true } = options;
+  const { skipPayPalTransfers = false, markPayPalAsLinked = true } = options;
   
   await categorizationService.initialize();
   
@@ -247,14 +247,29 @@ export async function importVolksbankCSV(
       // Build description
       const description = purpose || bookingText || counterparty;
       
-      // Categorize
-      const { category, confidence } = categorizationService.categorize(description, amount);
+      // Categorize - PayPal transfers are automatically categorized as 'transfer'
+      let category: any;
+      let confidence: number;
+      let txType: 'income' | 'expense' | 'transfer';
+      
+      if (isPayPal) {
+        // PayPal bank transfers are internal movements, not real income/expense
+        category = 'transfer';
+        confidence = 0.95;
+        txType = 'transfer';
+      } else {
+        const result = categorizationService.categorize(description, amount);
+        category = result.category;
+        confidence = result.confidence;
+        // Check if categorization detected a transfer
+        txType = category === 'transfer' ? 'transfer' : (amount >= 0 ? 'income' : 'expense');
+      }
       
       const transaction: Transaction = {
         id: generateUUID(),
         date,
         amount,
-        type: amount >= 0 ? 'income' : 'expense',
+        type: txType,
         category,
         description,
         counterparty,
@@ -262,8 +277,8 @@ export async function importVolksbankCSV(
         confidence,
         sourceAccount: 'volksbank',
         externalId,
-        // Mark PayPal transfers specially if not skipped
-        ...(isPayPal && markPayPalAsLinked ? { linkedPayPalRef: paypalRef } : {}),
+        // Mark PayPal transfers specially
+        ...(isPayPal && markPayPalAsLinked && paypalRef ? { linkedPayPalRef: paypalRef } : {}),
       };
       
       result.transactions.push(transaction);
