@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Modal, Pressable, ActivityIndicator, ScrollView, TextInput, Alert, Linking, TouchableOpacity, Platform } from 'react-native';
-import { X, Type, Minus, Circle, Plus, Building2, Wallet, Link, Unlink, CheckCircle2, RefreshCw, Eye, EyeOff, ExternalLink, Trash2 } from 'lucide-react-native';
+import { X, Type, Minus, Circle, Plus, Building2, Wallet, Link, Unlink, CheckCircle2, RefreshCw, Eye, EyeOff, ExternalLink, Trash2, Upload, FileText } from 'lucide-react-native';
 import { useSettings, UIScale } from '../context/SettingsContext';
 import { backendApiService } from '../services/backendApi';
 import { storageService } from '../services/storage';
 import { categorizationService } from '../services/categorization';
+import { csvImportService } from '../services/csvImport';
 import Constants from 'expo-constants';
 
 import { useApp } from '../context/AppContext';
@@ -50,6 +51,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [tanMethods, setTanMethods] = useState<Array<{ id: string; name: string }>>([]);
   const [accounts, setAccounts] = useState<Array<{ id: string; account_number: string; iban?: string }>>([]);
   const [statusMessage, setStatusMessage] = useState('');
+  
+  // CSV Import state
+  const [isCSVImporting, setIsCSVImporting] = useState(false);
+  const [csvImportResult, setCSVImportResult] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -450,6 +456,86 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
+  // CSV Import handlers
+  const handleCSVFileSelect = () => {
+    if (typeof document !== 'undefined') {
+      // Web: Create and trigger file input
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.csv';
+      input.onchange = async (e: any) => {
+        const file = e.target?.files?.[0];
+        if (file) {
+          await processCSVFile(file);
+        }
+      };
+      input.click();
+    } else {
+      // Native: Would need expo-document-picker
+      window.alert('CSV-Import ist derzeit nur im Browser verfügbar.');
+    }
+  };
+
+  const processCSVFile = async (file: File) => {
+    setIsCSVImporting(true);
+    setCSVImportResult(null);
+    
+    try {
+      const content = await file.text();
+      console.log('[CSV] File loaded, size:', content.length);
+      
+      // Get existing transactions for duplicate detection
+      const existingTransactions = await storageService.getTransactions();
+      
+      // Import CSV
+      const result = await csvImportService.importVolksbankCSV(
+        content,
+        existingTransactions,
+        { skipPayPalTransfers: true }
+      );
+      
+      console.log('[CSV] Import result:', result);
+      
+      if (result.success && result.transactions.length > 0) {
+        // Save to storage
+        const saveResult = await storageService.importTransactions(result.transactions);
+        
+        const message = `✓ ${saveResult.added} Transaktionen importiert\n` +
+          `${result.skippedPayPal} PayPal-Überweisungen übersprungen\n` +
+          `${result.skippedDuplicates + saveResult.duplicates} Duplikate übersprungen`;
+        
+        setCSVImportResult(message);
+        
+        // Refresh app data
+        await refreshData();
+        
+        if (typeof window !== 'undefined' && window.alert) {
+          window.alert(`CSV Import erfolgreich!\n\n${message}`);
+        }
+      } else if (result.errors.length > 0) {
+        const errorMsg = `Import fehlgeschlagen:\n${result.errors.join('\n')}`;
+        setCSVImportResult(errorMsg);
+        if (typeof window !== 'undefined' && window.alert) {
+          window.alert(errorMsg);
+        }
+      } else {
+        setCSVImportResult('Keine neuen Transaktionen gefunden.');
+        if (typeof window !== 'undefined' && window.alert) {
+          window.alert('Keine neuen Transaktionen gefunden.');
+        }
+      }
+    } catch (error: any) {
+      console.error('[CSV] Import error:', error);
+      const errorMsg = `Fehler beim Import: ${error.message}`;
+      setCSVImportResult(errorMsg);
+      if (typeof window !== 'undefined' && window.alert) {
+        window.alert(errorMsg);
+      }
+    } finally {
+      setIsCSVImporting(false);
+    }
+  };
+
   const appVersion = Constants.expoConfig?.version || '1.0.0';
 
   return (
@@ -663,6 +749,41 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       </Pressable>
                     </View>
                   )}
+                </View>
+              )}
+
+              {/* CSV Import */}
+              <View style={styles.connectionCard}>
+                <View style={styles.connectionInfo}>
+                  <View style={[styles.connectionIcon, { backgroundColor: '#10b98115' }]}>
+                    <FileText size={18} color="#10b981" />
+                  </View>
+                  <View style={styles.connectionDetails}>
+                    <Text style={styles.connectionName}>CSV Import</Text>
+                    <Text style={styles.disconnectedText}>Volksbank Umsätze importieren</Text>
+                  </View>
+                </View>
+                <TouchableOpacity 
+                  style={[styles.connectButton, { backgroundColor: '#10b98115', cursor: 'pointer' } as any]}
+                  onPress={handleCSVFileSelect}
+                  activeOpacity={0.7}
+                  disabled={isCSVImporting}
+                >
+                  {isCSVImporting ? (
+                    <ActivityIndicator size="small" color="#10b981" />
+                  ) : (
+                    <>
+                      <Upload size={12} color="#10b981" />
+                      <Text style={[styles.connectButtonText, { color: '#10b981' }]}>CSV laden</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              {/* CSV Import Result */}
+              {csvImportResult && (
+                <View style={styles.csvResultBox}>
+                  <Text style={styles.csvResultText}>{csvImportResult}</Text>
                 </View>
               )}
 
@@ -1235,5 +1356,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     color: '#ef4444',
+  },
+  csvResultBox: {
+    backgroundColor: '#f0fdf4',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+  },
+  csvResultText: {
+    fontSize: 11,
+    color: '#166534',
+    lineHeight: 16,
   },
 });
