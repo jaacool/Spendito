@@ -246,12 +246,24 @@ router.get('/callback', async (req, res) => {
     // Redirect to success page or deep link back to app
     res.send(`
       <html>
-        <head><title>PayPal verbunden</title></head>
-        <body style="font-family: system-ui; text-align: center; padding: 50px;">
-          <h1>✅ PayPal erfolgreich verbunden!</h1>
-          <p>Du kannst dieses Fenster schließen und zur App zurückkehren.</p>
+        <head>
+          <title>PayPal verbunden</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+        </head>
+        <body style="font-family: system-ui, -apple-system, sans-serif; text-align: center; padding: 40px 20px; color: #1f2937;">
+          <div style="max-width: 400px; margin: 0 auto;">
+            <div style="font-size: 64px; margin-bottom: 20px;">✅</div>
+            <h1 style="font-size: 24px; margin-bottom: 16px;">PayPal erfolgreich verbunden!</h1>
+            <p style="font-size: 16px; color: #6b7280; line-height: 1.5; margin-bottom: 30px;">
+              Du kannst dieses Fenster nun schließen oder den Button unten nutzen, um zur App zurückzukehren.
+            </p>
+            <a href="spendito://paypal-success" 
+               style="display: inline-block; background: #0070ba; color: white; text-decoration: none; padding: 12px 24px; borderRadius: 100px; font-weight: 600; font-size: 16px;">
+              Zurück zur App
+            </a>
+          </div>
           <script>
-            // Try to redirect to app
+            // Auto-redirect after 2 seconds
             setTimeout(() => {
               window.location.href = 'spendito://paypal-success';
             }, 2000);

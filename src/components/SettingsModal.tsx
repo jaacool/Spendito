@@ -53,6 +53,18 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    const subscription = Linking.addEventListener('url', (event) => {
+      if (event.url.includes('paypal-success')) {
+        loadPayPalStatus();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   const loadConnectionStatus = async () => {
     try {
       const status = await backendApiService.getConnectionStatus();
