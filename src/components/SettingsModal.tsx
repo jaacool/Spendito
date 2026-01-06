@@ -4,6 +4,7 @@ import { X, Type, Minus, Circle, Plus, Building2, Wallet, Link, Unlink, CheckCir
 import { useSettings, UIScale } from '../context/SettingsContext';
 import { backendApiService } from '../services/backendApi';
 import { storageService } from '../services/storage';
+import { categorizationService } from '../services/categorization';
 import Constants from 'expo-constants';
 
 import { useApp } from '../context/AppContext';
@@ -35,6 +36,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { refreshData } = useApp();
   const [connectionStatus, setConnectionStatus] = useState<BankConnectionStatus | null>(null);
   const [paypalStatus, setPaypalStatus] = useState<PayPalStatus | null>(null);
+  const [syncId, setSyncId] = useState<string>('');
+  const [isEditingSyncId, setIsEditingSyncId] = useState(false);
+  const [newSyncId, setNewSyncId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isPaypalLoading, setIsPaypalLoading] = useState(false);
   const [showBankForm, setShowBankForm] = useState(false);
@@ -54,8 +58,51 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     if (isOpen) {
       loadConnectionStatus();
       loadPayPalStatus();
+      loadSyncId();
     }
   }, [isOpen]);
+
+  const loadSyncId = async () => {
+    const id = await backendApiService.getUserId();
+    if (id) {
+      setSyncId(id);
+      setNewSyncId(id);
+    }
+  };
+
+  const handleUpdateSyncId = async () => {
+    if (!newSyncId.trim()) return;
+    
+    Alert.alert(
+      'Synchronisations-ID ändern',
+      'Wenn du eine neue ID eingibst, werden deine lokalen Daten mit den Daten dieser ID überschrieben. Fortfahren?',
+      [
+        { text: 'Abbrechen', style: 'cancel' },
+        {
+          text: 'Aktualisieren',
+          onPress: async () => {
+            setIsLoading(true);
+            try {
+              await backendApiService.setUserId(newSyncId.trim());
+              setSyncId(newSyncId.trim());
+              setIsEditingSyncId(false);
+              
+              // Re-initialize services to fetch new data
+              await storageService.initialize(true);
+              await categorizationService.initialize();
+              await refreshData();
+              
+              Alert.alert('Erfolg', 'Synchronisations-ID wurde aktualisiert und Daten neu geladen.');
+            } catch (error) {
+              Alert.alert('Fehler', 'ID konnte nicht aktualisiert werden.');
+            } finally {
+              setIsLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -699,6 +746,59 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             </View>
           </View>
 
+          {/* Sync ID Setting */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <RefreshCw size={16} color="#6b7280" />
+              <Text style={styles.sectionTitle}>Synchronisation</Text>
+            </View>
+            
+            <View style={styles.syncCard}>
+              <Text style={styles.syncLabel}>Deine Synchronisations-ID:</Text>
+              {isEditingSyncId ? (
+                <View style={styles.syncInputContainer}>
+                  <TextInput
+                    style={styles.syncInput}
+                    value={newSyncId}
+                    onChangeText={setNewSyncId}
+                    placeholder="ID eingeben"
+                    autoCapitalize="none"
+                  />
+                  <View style={styles.syncActionButtons}>
+                    <Pressable 
+                      style={styles.syncCancelButton}
+                      onPress={() => {
+                        setIsEditingSyncId(false);
+                        setNewSyncId(syncId);
+                      }}
+                    >
+                      <X size={16} color="#ef4444" />
+                    </Pressable>
+                    <Pressable 
+                      style={styles.syncConfirmButton}
+                      onPress={handleUpdateSyncId}
+                    >
+                      <CheckCircle2 size={16} color="#22c55e" />
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.syncDisplayContainer}>
+                  <Text style={styles.syncIdText} numberOfLines={1}>{syncId}</Text>
+                  <Pressable 
+                    style={styles.syncEditButton}
+                    onPress={() => setIsEditingSyncId(true)}
+                  >
+                    <Text style={styles.syncEditButtonText}>Ändern</Text>
+                  </Pressable>
+                </View>
+              )}
+              <Text style={styles.syncHint}>
+                Nutze diese ID auf anderen Geräten, um deine Daten (PayPal-Importe, Kategorisierungen) zu synchronisieren.
+              </Text>
+            </View>
+          </View>
+
           {/* Preview */}
             <View style={styles.previewSection}>
               <Text style={styles.previewLabel}>Vorschau</Text>
@@ -1123,6 +1223,87 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  syncCard: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  syncLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 8,
+  },
+  syncDisplayContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 10,
+  },
+  syncIdText: {
+    fontSize: 14,
+    fontFamily: 'monospace',
+    color: '#1f2937',
+    flex: 1,
+  },
+  syncEditButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 4,
+  },
+  syncEditButtonText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#0066b3',
+  },
+  syncInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#0066b3',
+    padding: 4,
+  },
+  syncInput: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: 'monospace',
+    color: '#1f2937',
+    paddingHorizontal: 8,
+  },
+  syncActionButtons: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  syncCancelButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 4,
+    backgroundColor: '#fef2f2',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  syncConfirmButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 4,
+    backgroundColor: '#f0fdf4',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  syncHint: {
+    fontSize: 11,
+    color: '#9ca3af',
+    marginTop: 8,
+    lineHeight: 14,
   },
   syncButton: {
     flexDirection: 'row',

@@ -52,6 +52,24 @@ class BackendApiService {
   private userId: string | null = null;
 
   /**
+   * Get current user ID
+   */
+  async getUserId(): Promise<string | null> {
+    if (!this.userId) {
+      await this.initialize();
+    }
+    return this.userId;
+  }
+
+  /**
+   * Set user ID for sync
+   */
+  async setUserId(newUserId: string): Promise<void> {
+    this.userId = newUserId;
+    await AsyncStorage.setItem(STORAGE_KEYS.USER_ID, newUserId);
+  }
+
+  /**
    * Initialize service and get/create user ID
    */
   async initialize(): Promise<void> {

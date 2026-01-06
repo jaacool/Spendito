@@ -1,19 +1,28 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Transaction, YearSummary, CategorySummary, INCOME_CATEGORIES, EXPENSE_CATEGORIES, CATEGORY_INFO } from '../types';
+import { supabase, SUPABASE_TABLES } from './supabase';
 
 const TRANSACTIONS_KEY = '@spendito_transactions';
+const USER_ID_KEY = 'backend_user_id';
 
 class StorageService {
   private transactions: Transaction[] = [];
   private initialized = false;
 
-  async initialize(): Promise<void> {
-    if (this.initialized) return;
+  async initialize(force = false): Promise<void> {
+    if (this.initialized && !force) return;
     
     try {
+      // 1. Load local transactions
       const stored = await AsyncStorage.getItem(TRANSACTIONS_KEY);
-      if (stored) {
+      if (stored && !force) {
         this.transactions = JSON.parse(stored);
+      }
+
+      // 2. Try to sync with Supabase if userId exists
+      const userId = await AsyncStorage.getItem(USER_ID_KEY);
+      if (userId) {
+        await this.syncWithSupabase(userId);
       }
     } catch (error) {
       console.error('Failed to load transactions:', error);
@@ -23,11 +32,98 @@ class StorageService {
     this.initialized = true;
   }
 
+  private async syncWithSupabase(userId: string): Promise<void> {
+    try {
+      console.log(`[Storage] Syncing transactions from Supabase for user ${userId}...`);
+      const { data, error } = await supabase
+        .from(SUPABASE_TABLES.TRANSACTIONS)
+        .select('*')
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        // Simple merge: remote transactions win for now
+        // In a real app, we'd check timestamps
+        const remoteTransactions: Transaction[] = data.map(t => ({
+          id: t.id,
+          date: t.date,
+          amount: t.amount,
+          type: t.type,
+          category: t.category,
+          description: t.description,
+          counterparty: t.counterparty,
+          isManuallyCategized: t.is_manually_categorized,
+          confidence: t.confidence,
+          sourceAccount: t.source_account,
+          externalId: t.external_id,
+          isDuplicate: t.is_duplicate,
+          duplicateReason: t.duplicate_reason,
+          linkedTransactionId: t.linked_transaction_id,
+        }));
+
+        // Merge logic: keep local transactions that aren't on remote, 
+        // and add all remote transactions
+        const localOnly = this.transactions.filter(lt => 
+          !remoteTransactions.some(rt => rt.id === lt.id || (rt.externalId && rt.externalId === lt.externalId))
+        );
+
+        this.transactions = [...remoteTransactions, ...localOnly];
+        await AsyncStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(this.transactions));
+        console.log(`[Storage] Synced ${remoteTransactions.length} transactions from Supabase`);
+      }
+    } catch (error) {
+      console.error('[Storage] Supabase sync failed:', error);
+    }
+  }
+
   private async saveTransactions(): Promise<void> {
     try {
       await AsyncStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(this.transactions));
+      
+      // Sync to Supabase if userId exists
+      const userId = await AsyncStorage.getItem(USER_ID_KEY);
+      if (userId) {
+        await this.pushToSupabase(userId, this.transactions);
+      }
     } catch (error) {
       console.error('Failed to save transactions:', error);
+    }
+  }
+
+  private async pushToSupabase(userId: string, transactions: Transaction[]): Promise<void> {
+    try {
+      const dataToSync = transactions.map(t => ({
+        id: t.id,
+        user_id: userId,
+        date: t.date,
+        amount: t.amount,
+        type: t.type,
+        category: t.category,
+        description: t.description,
+        counterparty: t.counterparty,
+        is_manually_categorized: t.isManuallyCategized,
+        confidence: t.confidence,
+        source_account: t.sourceAccount,
+        external_id: t.externalId,
+        is_duplicate: t.isDuplicate || false,
+        duplicate_reason: t.duplicateReason || null,
+        linked_transaction_id: t.linkedTransactionId || null,
+      }));
+
+      // Upsert in batches of 100 to avoid request size limits
+      const batchSize = 100;
+      for (let i = 0; i < dataToSync.length; i += batchSize) {
+        const batch = dataToSync.slice(i, i + batchSize);
+        const { error } = await supabase
+          .from(SUPABASE_TABLES.TRANSACTIONS)
+          .upsert(batch);
+
+        if (error) throw error;
+      }
+      console.log(`[Storage] Pushed ${dataToSync.length} transactions to Supabase`);
+    } catch (error) {
+      console.error('[Storage] Failed to push to Supabase:', error);
     }
   }
 
@@ -148,34 +244,31 @@ class StorageService {
     // Ensure we're initialized before importing
     await this.initialize();
     
-    let added = 0;
-    let duplicates = 0;
+    let addedCount = 0;
+    let duplicateCount = 0;
     
     console.log(`[Storage] Importing ${newTransactions.length} transactions...`);
     
-    for (const transaction of newTransactions) {
-      // Check for duplicates based on date, amount, and description
+    for (const tx of newTransactions) {
       const isDuplicate = this.transactions.some(t => 
-        t.date === transaction.date && 
-        t.amount === transaction.amount && 
-        t.description === transaction.description
+        t.id === tx.id || 
+        (tx.externalId && t.externalId === tx.externalId) ||
+        (t.date === tx.date && t.amount === tx.amount && t.description === tx.description)
       );
       
       if (!isDuplicate) {
-        this.transactions.push(transaction);
-        added++;
+        this.transactions.push(tx);
+        addedCount++;
       } else {
-        duplicates++;
+        duplicateCount++;
       }
     }
     
-    console.log(`[Storage] Added ${added}, duplicates ${duplicates}, total now ${this.transactions.length}`);
-    
-    if (added > 0) {
+    if (addedCount > 0) {
       await this.saveTransactions();
     }
     
-    return { added, duplicates };
+    return { added: addedCount, duplicates: duplicateCount };
   }
 }
 
