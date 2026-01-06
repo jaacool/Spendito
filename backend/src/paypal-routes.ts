@@ -361,6 +361,28 @@ router.get('/status/:userId', async (req, res) => {
 });
 
 /**
+ * Get stored PayPal transactions for a user
+ */
+router.get('/transactions/:userId', (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const transactions = db.prepare(`
+      SELECT t.* 
+      FROM transactions t
+      JOIN bank_accounts ba ON t.account_id = ba.id
+      JOIN bank_connections bc ON ba.connection_id = bc.id
+      WHERE bc.user_id = ? AND bc.bank_id = 'paypal'
+      ORDER BY t.date DESC
+    `).all(userId);
+
+    res.json(transactions);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * Sync PayPal transactions for a user
  */
 router.post('/sync/:userId', async (req, res) => {
