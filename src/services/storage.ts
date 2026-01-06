@@ -139,8 +139,13 @@ class StorageService {
 
   // Import transactions from bank data
   async importTransactions(newTransactions: Transaction[]): Promise<{ added: number; duplicates: number }> {
+    // Ensure we're initialized before importing
+    await this.initialize();
+    
     let added = 0;
     let duplicates = 0;
+    
+    console.log(`[Storage] Importing ${newTransactions.length} transactions...`);
     
     for (const transaction of newTransactions) {
       // Check for duplicates based on date, amount, and description
@@ -157,6 +162,8 @@ class StorageService {
         duplicates++;
       }
     }
+    
+    console.log(`[Storage] Added ${added}, duplicates ${duplicates}, total now ${this.transactions.length}`);
     
     if (added > 0) {
       await this.saveTransactions();
