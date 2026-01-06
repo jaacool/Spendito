@@ -381,10 +381,13 @@ class BackendApiService {
         ? { category: tx.category as any, confidence: 1 }
         : categorizationService.categorize(tx.description || tx.counterparty_name || '', tx.amount);
 
+      // Log the mapping to ensure date and amount are correct
+      console.log(`[PayPal] Mapping TX: ${tx.id}, Date: ${tx.date}, Amount: ${tx.amount}`);
+
       return {
         id: tx.id,
-        date: new Date(tx.date).toISOString(),
-        amount: tx.amount,
+        date: tx.date, // Use raw ISO string from backend
+        amount: Math.abs(tx.amount), // Use absolute for storage logic
         type: isIncome ? 'income' : 'expense',
         category,
         description: tx.description || tx.counterparty_name || 'PayPal',
