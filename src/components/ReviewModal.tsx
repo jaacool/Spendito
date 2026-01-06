@@ -48,7 +48,7 @@ export function ReviewModal({ isOpen, onClose, transactions, onApplyChange }: Re
 
   const handleApplyChange = async (result: ReviewResult) => {
     if (result.suggestedCategory !== result.originalCategory) {
-      await onApplyChange(result.transactionId, result.suggestedCategory);
+      await aiReviewService.applySuggestedChanges([result], transactions, onApplyChange);
       setAppliedChanges(prev => new Set([...prev, result.transactionId]));
     }
   };
@@ -62,8 +62,13 @@ export function ReviewModal({ isOpen, onClose, transactions, onApplyChange }: Re
       !appliedChanges.has(r.transactionId)
     );
 
-    for (const result of toApply) {
-      await handleApplyChange(result);
+    if (toApply.length > 0) {
+      await aiReviewService.applySuggestedChanges(toApply, transactions, onApplyChange);
+      setAppliedChanges(prev => {
+        const next = new Set(prev);
+        toApply.forEach(r => next.add(r.transactionId));
+        return next;
+      });
     }
   };
 
