@@ -73,10 +73,11 @@ export function ReviewModal({ isOpen, onClose, transactions, onApplyChange }: Re
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('de-DE', {
+    const formatted = new Intl.NumberFormat('de-DE', {
       style: 'currency',
       currency: 'EUR',
     }).format(Math.abs(amount));
+    return amount < 0 ? `-${formatted}` : formatted;
   };
 
   const suggestionsToReview = summary?.results.filter(r => 
@@ -156,7 +157,10 @@ export function ReviewModal({ isOpen, onClose, transactions, onApplyChange }: Re
                           <Text style={styles.suggestionDescription} numberOfLines={1}>
                             {transaction.description}
                           </Text>
-                          <Text style={styles.suggestionAmount}>
+                          <Text style={[
+                            styles.suggestionAmount,
+                            transaction.amount < 0 && styles.expenseAmount
+                          ]}>
                             {formatCurrency(transaction.amount)}
                           </Text>
                         </View>
@@ -359,7 +363,10 @@ const styles = StyleSheet.create({
   suggestionAmount: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#6b7280',
+    color: '#10b981', // Green for income
+  },
+  expenseAmount: {
+    color: '#ef4444', // Red for expenses
   },
   categoryChange: {
     flexDirection: 'row',
