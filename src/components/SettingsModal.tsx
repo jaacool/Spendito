@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Modal, Pressable, ActivityIndicator, ScrollView, TextInput, Alert, Linking } from 'react-native';
+import { View, Text, StyleSheet, Modal, Pressable, ActivityIndicator, ScrollView, TextInput, Alert, Linking, TouchableOpacity, Platform } from 'react-native';
 import { X, Type, Minus, Circle, Plus, Building2, Wallet, Link, Unlink, CheckCircle2, RefreshCw, Eye, EyeOff, ExternalLink, Trash2 } from 'lucide-react-native';
 import { useSettings, UIScale } from '../context/SettingsContext';
 import { backendApiService } from '../services/backendApi';
@@ -479,16 +479,17 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <Unlink size={14} color="#ef4444" />
                   </Pressable>
                 ) : (
-                  <Pressable 
+                  <TouchableOpacity 
                     style={[styles.connectButton, { cursor: 'pointer' } as any]} 
                     onPress={() => {
                       console.log('[Bank] Verbinden button pressed');
                       handleConnectBank();
                     }}
+                    activeOpacity={0.7}
                   >
                     <Link size={12} color="#0066b3" />
                     <Text style={styles.connectButtonText}>Verbinden</Text>
-                  </Pressable>
+                  </TouchableOpacity>
                 )}
               </View>
 
