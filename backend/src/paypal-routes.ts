@@ -114,40 +114,64 @@ async function getUserToken(userId: string): Promise<string | null> {
 
 /**
  * Fetch transactions from PayPal using user's token
+ * Handles the 31-day limit by splitting the request into chunks
  */
 async function fetchUserTransactions(
   accessToken: string,
   startDate: string,
   endDate: string
 ): Promise<any[]> {
-  const params = new URLSearchParams({
-    start_date: startDate,
-    end_date: endDate,
-    page_size: '100',
-    fields: 'all',
-  });
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const allTransactions: any[] = [];
 
-  const apiUrl = `${PAYPAL_API_BASE}/v1/reporting/transactions?${params.toString()}`;
-  console.log(`[PayPal] Requesting: ${apiUrl}`);
+  // PayPal API limit: 31 days per request
+  const CHUNK_SIZE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days to be safe
 
-  const response = await fetch(
-    apiUrl,
-    {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
+  let currentStart = start;
+  while (currentStart < end) {
+    let currentEnd = new Date(currentStart.getTime() + CHUNK_SIZE_MS);
+    if (currentEnd > end) currentEnd = end;
+
+    const formattedStart = currentStart.toISOString().split('.')[0] + 'Z';
+    const formattedEnd = currentEnd.toISOString().split('.')[0] + 'Z';
+
+    const params = new URLSearchParams({
+      start_date: formattedStart,
+      end_date: formattedEnd,
+      page_size: '100',
+      fields: 'all',
+    });
+
+    const apiUrl = `${PAYPAL_API_BASE}/v1/reporting/transactions?${params.toString()}`;
+    console.log(`[PayPal] Fetching chunk: ${formattedStart} to ${formattedEnd}`);
+
+    const response = await fetch(
+      apiUrl,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error(`[PayPal] API Error (${response.status}):`, error);
+      // If one chunk fails, we might still want the others, but for now throw
+      throw new Error(`PayPal API error in chunk ${formattedStart}-${formattedEnd}: ${error}`);
     }
-  );
 
-  if (!response.ok) {
-    const error = await response.text();
-    console.error(`[PayPal] API Error (${response.status}):`, error);
-    throw new Error(`PayPal API error: ${error}`);
+    const data = await response.json() as any;
+    const chunkTransactions = data.transaction_details || [];
+    allTransactions.push(...chunkTransactions);
+
+    // Next chunk starts where this one ended (add 1 second to avoid duplicates if API is inclusive)
+    currentStart = new Date(currentEnd.getTime() + 1000);
   }
 
-  const data = await response.json() as any;
-  return data.transaction_details || [];
+  return allTransactions;
 }
 
 /**
