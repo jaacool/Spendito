@@ -6,6 +6,8 @@ import { backendApiService } from '../services/backendApi';
 import { storageService } from '../services/storage';
 import Constants from 'expo-constants';
 
+import { useApp } from '../context/AppContext';
+
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -30,6 +32,7 @@ interface PayPalStatus {
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { uiScale, setUIScale } = useSettings();
+  const { refreshData } = useApp();
   const [connectionStatus, setConnectionStatus] = useState<BankConnectionStatus | null>(null);
   const [paypalStatus, setPaypalStatus] = useState<PayPalStatus | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -180,11 +183,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         );
         
         // Refresh the app data to show new transactions
-        if (typeof window !== 'undefined' && window.location) {
-          // A bit drastic but ensures AppContext refreshes
-          // window.location.reload(); 
-          // Better: just trigger a refresh if we had a refresh function in context
-        }
+        await refreshData();
       } else {
         Alert.alert(
           'PayPal Sync',
