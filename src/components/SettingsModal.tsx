@@ -147,6 +147,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const handleSyncPayPal = async () => {
     setIsPaypalLoading(true);
     try {
+      // First sync from PayPal API to backend
       const result = await backendApiService.syncPayPal();
       
       if (result.needsAuth) {
@@ -162,12 +163,26 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         return;
       }
       
-      Alert.alert(
-        'PayPal Sync',
-        `${result.transactionsAdded} neue Transaktionen importiert!`
-      );
+      // Now fetch the transactions from backend and import to local storage
+      const transactions = await backendApiService.getPayPalTransactions();
+      if (transactions.length > 0) {
+        const { storageService } = await import('../services/storage');
+        const importResult = await storageService.importTransactions(transactions);
+        
+        Alert.alert(
+          'PayPal Sync',
+          `${importResult.added} neue Transaktionen importiert!\n(${importResult.duplicates} Duplikate übersprungen)`
+        );
+      } else {
+        Alert.alert(
+          'PayPal Sync',
+          `${result.transactionsAdded} Transaktionen vom Backend abgerufen, aber keine neuen Einträge gefunden.`
+        );
+      }
+      
       await loadPayPalStatus();
     } catch (error: any) {
+      console.error('[PayPal] Sync error:', error);
       Alert.alert('Fehler', error.message || 'PayPal Sync fehlgeschlagen');
     } finally {
       setIsPaypalLoading(false);
