@@ -139,6 +139,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   };
 
   const handleDisconnectPayPal = async () => {
+    console.log('[PayPal] Disconnect requested');
     Alert.alert(
       'PayPal trennen',
       'Möchtest du PayPal wirklich trennen? Alle PayPal-Transaktionen werden gelöscht.',
@@ -148,8 +149,15 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           text: 'Trennen',
           style: 'destructive',
           onPress: async () => {
-            await backendApiService.disconnectPayPal();
-            await loadPayPalStatus();
+            console.log('[PayPal] Disconnecting...');
+            try {
+              await backendApiService.disconnectPayPal();
+              await loadPayPalStatus();
+              Alert.alert('Erfolg', 'PayPal wurde getrennt.');
+            } catch (error: any) {
+              console.error('[PayPal] Disconnect error:', error);
+              Alert.alert('Fehler', 'Trennen fehlgeschlagen: ' + error.message);
+            }
           },
         },
       ]
