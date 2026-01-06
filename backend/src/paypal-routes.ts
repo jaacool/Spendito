@@ -259,29 +259,27 @@ router.get('/callback', async (req, res) => {
             <div style="font-size: 64px; margin-bottom: 20px;">✅</div>
             <h1 style="font-size: 24px; margin-bottom: 16px;">PayPal erfolgreich verbunden!</h1>
             <p style="font-size: 16px; color: #6b7280; line-height: 1.5; margin-bottom: 30px;">
-              Du kannst dieses Fenster nun schließen oder den Button unten nutzen, um zur App zurückzukehren.
+              Du kannst dieses Fenster nun schließen und zur App zurückkehren.
             </p>
-            <a href="spendito://paypal-success" 
-               style="display: block; background: #0070ba; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-weight: 600; font-size: 16px; margin-bottom: 12px;">
-              Zurück zur App (Standard)
-            </a>
-            <a href="exp://127.0.0.1:8081/--/paypal-success" 
-               style="display: block; background: #f3f4f6; color: #4b5563; text-decoration: none; padding: 14px 24px; border-radius: 8px; font-weight: 600; font-size: 14px;">
-              Zurück zur Expo Go (Entwicklung)
-            </a>
+            <button onclick="window.close()" 
+               style="display: block; width: 100%; background: #0070ba; color: white; border: none; padding: 14px 24px; border-radius: 8px; font-weight: 600; font-size: 16px; cursor: pointer; margin-bottom: 12px;">
+              Fenster schließen
+            </button>
+            <a href="spendito://paypal-success" id="app-link" style="display: none; font-size: 14px; color: #0070ba;">Zurück zur App (Mobile)</a>
           </div>
           <script>
-            // Try auto-redirect
-            const schemes = ['spendito://paypal-success', 'exp://127.0.0.1:8081/--/paypal-success'];
-            let attempt = 0;
-            
-            function tryNext() {
-              if (attempt < schemes.length) {
-                window.location.href = schemes[attempt++];
-              }
+            // For Web/Vercel: Try to notify the opener window
+            if (window.opener) {
+              window.opener.postMessage({ type: 'PAYPAL_CONNECTED' }, '*');
             }
             
-            setTimeout(tryNext, 1000);
+            // For Mobile: Try deep links
+            if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+              document.getElementById('app-link').style.display = 'block';
+              setTimeout(() => {
+                window.location.href = 'spendito://paypal-success';
+              }, 1000);
+            }
           </script>
         </body>
       </html>

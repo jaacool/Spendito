@@ -54,6 +54,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   }, [isOpen]);
 
   useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'PAYPAL_CONNECTED') {
+        loadPayPalStatus();
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+
     const subscription = Linking.addEventListener('url', (event) => {
       if (event.url.includes('paypal-success')) {
         loadPayPalStatus();
@@ -61,6 +69,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     });
 
     return () => {
+      window.removeEventListener('message', handleMessage);
       subscription.remove();
     };
   }, []);
