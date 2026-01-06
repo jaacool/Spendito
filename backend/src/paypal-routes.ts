@@ -353,9 +353,9 @@ router.post('/sync/:userId', async (req, res) => {
       });
     }
 
-    // Default to last 30 days
+    // Default to last 3 years (PayPal API max is 3 years)
     const end = endDate || new Date().toISOString();
-    const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const start = startDate || new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000).toISOString();
 
     // Get connection
     const connection = db.prepare(`
