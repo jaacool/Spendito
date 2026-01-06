@@ -355,7 +355,9 @@ router.post('/sync/:userId', async (req, res) => {
 
     // Default to last 3 years (PayPal API max is 3 years)
     const end = endDate || new Date().toISOString();
-    const start = startDate || new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000).toISOString();
+    // Use simple ISO format without milliseconds to be safe for PayPal API
+    const start = startDate || new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000).toISOString().split('.')[0] + 'Z';
+    const endFormatted = end.split('.')[0] + 'Z';
 
     // Get connection
     const connection = db.prepare(`
@@ -381,8 +383,8 @@ router.post('/sync/:userId', async (req, res) => {
     }
 
     // Fetch transactions
-    console.log(`[PayPal] Fetching transactions for user ${userId} from ${start} to ${end}`);
-    const transactions = await fetchUserTransactions(accessToken, start, end);
+    console.log(`[PayPal] Fetching transactions for user ${userId} from ${start} to ${endFormatted}`);
+    const transactions = await fetchUserTransactions(accessToken, start, endFormatted);
     console.log(`[PayPal] Found ${transactions.length} total transactions`);
     
     // Log the structure of the first transaction to debug
