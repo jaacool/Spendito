@@ -6,6 +6,12 @@
 
 ## ✅ Erledigt
 
+### KI & Kategorisierung
+- [x] Integration von **Gemini 3 Flash** für automatische Quartals-Reviews
+- [x] Betragsbasiertes Lernen (z.B. Schutzgebühr um 500€ wird bevorzugt erkannt)
+- [x] Automatisches Lernen aus KI-Vorschlägen im Review-Modal
+- [x] Manuelle Korrekturen triggern Keyword- und Betrags-Learning
+
 ### PayPal Integration
 - [x] Backend PayPal-Routes erstellt (`backend/src/paypal-routes.ts`)
 - [x] OAuth-Flow implementiert (Login, Callback, Token-Speicherung)
