@@ -12,41 +12,49 @@ import {
 import { X, Sparkles, Check, AlertCircle, ChevronRight, RefreshCw, Calendar } from 'lucide-react-native';
 import { Transaction, Category, CATEGORY_INFO } from '../types';
 import { aiReviewService, ReviewResult, QuarterlyReviewSummary } from '../services/aiReview';
+import { storageService } from '../services/storage';
 
 interface ReviewModalProps {
   isOpen: boolean;
   onClose: () => void;
-  transactions: Transaction[];
   onApplyChange: (id: string, category: Category) => Promise<void>;
   selectedYear: number;
   availableYears: number[];
 }
 
-export function ReviewModal({ isOpen, onClose, transactions, onApplyChange, selectedYear, availableYears }: ReviewModalProps) {
+export function ReviewModal({ isOpen, onClose, onApplyChange, selectedYear, availableYears }: ReviewModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [summary, setSummary] = useState<QuarterlyReviewSummary | null>(null);
   const [appliedChanges, setAppliedChanges] = useState<Set<string>>(new Set());
   const [reviewYear, setReviewYear] = useState<number>(selectedYear);
   const [showYearPicker, setShowYearPicker] = useState(false);
+  const [yearTransactions, setYearTransactions] = useState<Transaction[]>([]);
 
   useEffect(() => {
     if (isOpen) {
       setReviewYear(selectedYear);
       setSummary(null);
       setAppliedChanges(new Set());
-      performReview();
+      loadAndReview(selectedYear);
     }
   }, [isOpen, selectedYear]);
 
-  const performReview = async (year?: number) => {
-    const targetYear = year || reviewYear;
+  const loadAndReview = async (year: number) => {
+    // Load transactions for the specific year directly from storage
+    const txForYear = storageService.getTransactionsByYear(year);
+    setYearTransactions(txForYear);
+    await performReviewWithTransactions(txForYear, year);
+  };
+
+  const performReviewWithTransactions = async (txList: Transaction[], year: number) => {
     setIsLoading(true);
     setSummary(null);
     setAppliedChanges(new Set());
     
     try {
-      const periodLabel = `Jahr ${targetYear}`;
-      const result = await aiReviewService.performQuarterlyReview(transactions, periodLabel);
+      const periodLabel = `Jahr ${year}`;
+      // Review ALL transactions, not just unconfirmed ones
+      const result = await aiReviewService.performQuarterlyReview(txList, periodLabel);
       setSummary(result);
     } catch (error) {
       console.error('Review failed:', error);
@@ -58,18 +66,17 @@ export function ReviewModal({ isOpen, onClose, transactions, onApplyChange, sele
   const handleYearChange = (year: number) => {
     setReviewYear(year);
     setShowYearPicker(false);
-    // Note: The actual transactions are filtered by the parent component based on selectedYear
-    // This just changes the label shown in the review
-    performReview(year);
+    // Load transactions for the selected year and analyze them
+    loadAndReview(year);
   };
 
   const handleRerunAnalysis = () => {
-    performReview();
+    loadAndReview(reviewYear);
   };
 
   const handleApplyChange = async (result: ReviewResult) => {
     if (result.suggestedCategory !== result.originalCategory) {
-      await aiReviewService.applySuggestedChanges([result], transactions, onApplyChange);
+      await aiReviewService.applySuggestedChanges([result], yearTransactions, onApplyChange);
       setAppliedChanges(prev => new Set([...prev, result.transactionId]));
     }
   };
@@ -84,7 +91,7 @@ export function ReviewModal({ isOpen, onClose, transactions, onApplyChange, sele
     );
 
     if (toApply.length > 0) {
-      await aiReviewService.applySuggestedChanges(toApply, transactions, onApplyChange);
+      await aiReviewService.applySuggestedChanges(toApply, yearTransactions, onApplyChange);
       setAppliedChanges(prev => {
         const next = new Set(prev);
         toApply.forEach(r => next.add(r.transactionId));
@@ -199,7 +206,7 @@ export function ReviewModal({ isOpen, onClose, transactions, onApplyChange, sele
                   </View>
 
                   {suggestionsToReview.map((result) => {
-                    const transaction = transactions.find(t => t.id === result.transactionId);
+                    const transaction = yearTransactions.find((t: Transaction) => t.id === result.transactionId);
                     if (!transaction) return null;
 
                     const originalInfo = CATEGORY_INFO[result.originalCategory];
@@ -278,7 +285,7 @@ export function ReviewModal({ isOpen, onClose, transactions, onApplyChange, sele
           ) : (
             <View style={styles.errorContainer}>
               <Text style={styles.errorText}>Fehler beim Laden der Überprüfung</Text>
-              <Pressable style={styles.retryButton} onPress={() => performReview()}>
+              <Pressable style={styles.retryButton} onPress={() => loadAndReview(reviewYear)}>
                 <Text style={styles.retryText}>Erneut versuchen</Text>
               </Pressable>
             </View>

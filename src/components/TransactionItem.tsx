@@ -46,6 +46,7 @@ export function TransactionItem({ transaction, onCategoryChange, onConfirm }: Tr
           styles.container,
           pressed && styles.pressed,
           isDuplicate && styles.duplicateContainer,
+          !isUserConfirmed && !isDuplicate && styles.unverifiedContainer,
         ]}
       >
         <View style={styles.leftSection}>
@@ -191,6 +192,9 @@ const styles = StyleSheet.create({
   duplicateContainer: {
     backgroundColor: '#f9fafb',
     opacity: 0.7,
+  },
+  unverifiedContainer: {
+    backgroundColor: '#f8f9fa',
   },
   leftSection: {
     flexDirection: 'row',

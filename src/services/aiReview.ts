@@ -181,15 +181,15 @@ Behalte die aktuelle Kategorie bei, wenn sie korrekt erscheint.`;
   }
 
   /**
-   * Perform quarterly review
+   * Perform quarterly review - analyzes ALL transactions
    */
   async performQuarterlyReview(
     transactions: Transaction[],
     quarter: string
   ): Promise<QuarterlyReviewSummary> {
-    // Filter transactions that might need review
+    // Filter transactions that are not yet confirmed by user
     const transactionsToReview = transactions.filter(t => 
-      !t.isManuallyCategized && t.confidence < 0.8
+      !t.isManuallyCategized && !t.isUserConfirmed
     );
 
     const results = await this.reviewTransactions(transactionsToReview);

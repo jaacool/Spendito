@@ -47,6 +47,7 @@ export default function HomeScreen() {
   const [activeTab, setActiveTab] = useState<'all' | 'income' | 'expense'>('all');
   const [accountFilter, setAccountFilter] = useState<'all' | SourceAccount>('all');
   const [showDuplicates, setShowDuplicates] = useState(false);
+  const [showOnlyOpen, setShowOnlyOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -65,11 +66,14 @@ export default function HomeScreen() {
     if (accountFilter !== 'all' && txAccount !== accountFilter) return false;
     // Filter duplicates
     if (!showDuplicates && t.isDuplicate) return false;
+    // Filter only open/unverified transactions
+    if (showOnlyOpen && (t.isUserConfirmed || t.isManuallyCategized)) return false;
     return true;
   });
 
-  // Count duplicates for display
+  // Count duplicates and open transactions for display
   const duplicateCount = transactions.filter(t => t.isDuplicate).length;
+  const openCount = transactions.filter(t => !t.isUserConfirmed && !t.isManuallyCategized && !t.isDuplicate).length;
 
   const handleCategoryChange = async (id: string, category: Category) => {
     await updateTransactionCategory(id, category);
@@ -318,17 +322,32 @@ export default function HomeScreen() {
                 </Pressable>
               </View>
 
-              {/* Duplicate Toggle */}
-              {duplicateCount > 0 && (
-                <Pressable 
-                  style={styles.duplicateToggle}
-                  onPress={() => setShowDuplicates(!showDuplicates)}
-                >
-                  <Text style={styles.duplicateToggleText}>
-                    {showDuplicates ? 'Duplikate ausblenden' : `${duplicateCount} Duplikate anzeigen`}
-                  </Text>
-                </Pressable>
-              )}
+              {/* Filter Toggles */}
+              <View style={styles.filterToggles}>
+                {/* Open Transactions Toggle */}
+                {openCount > 0 && (
+                  <Pressable 
+                    style={[styles.filterToggle, showOnlyOpen && styles.filterToggleActive]}
+                    onPress={() => setShowOnlyOpen(!showOnlyOpen)}
+                  >
+                    <Text style={[styles.filterToggleText, showOnlyOpen && styles.filterToggleTextActive]}>
+                      {showOnlyOpen ? 'Alle anzeigen' : `${openCount} offen`}
+                    </Text>
+                  </Pressable>
+                )}
+                
+                {/* Duplicate Toggle */}
+                {duplicateCount > 0 && (
+                  <Pressable 
+                    style={styles.duplicateToggle}
+                    onPress={() => setShowDuplicates(!showDuplicates)}
+                  >
+                    <Text style={styles.duplicateToggleText}>
+                      {showDuplicates ? 'Duplikate ausblenden' : `${duplicateCount} Duplikate`}
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
 
               {/* Transactions List */}
               <View style={styles.transactionsContainer}>
@@ -370,7 +389,6 @@ export default function HomeScreen() {
       <ReviewModal
         isOpen={isReviewOpen}
         onClose={() => setIsReviewOpen(false)}
-        transactions={transactions}
         onApplyChange={updateTransactionCategory}
         selectedYear={selectedYear}
         availableYears={availableYears}
@@ -638,14 +656,34 @@ const styles = StyleSheet.create({
   accountFilterTextActive: {
     color: '#0ea5e9',
   },
-  duplicateToggle: {
+  filterToggles: {
+    flexDirection: 'row',
     marginHorizontal: 16,
     marginBottom: 12,
-    paddingVertical: 8,
+    gap: 8,
+  },
+  filterToggle: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: '#dbeafe',
+    borderRadius: 8,
+  },
+  filterToggleActive: {
+    backgroundColor: '#3b82f6',
+  },
+  filterToggleText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#3b82f6',
+  },
+  filterToggleTextActive: {
+    color: '#ffffff',
+  },
+  duplicateToggle: {
+    paddingVertical: 6,
     paddingHorizontal: 12,
     backgroundColor: '#fef3c7',
     borderRadius: 8,
-    alignItems: 'center',
   },
   duplicateToggleText: {
     fontSize: 11,
