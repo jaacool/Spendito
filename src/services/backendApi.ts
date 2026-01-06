@@ -332,13 +332,22 @@ class BackendApiService {
   async syncPayPal(startDate?: string, endDate?: string): Promise<{ success: boolean; transactionsFound: number; transactionsAdded: number; needsAuth?: boolean; error?: string }> {
     await this.initialize();
 
+    console.log(`[PayPal] Starting sync for user ${this.userId}`);
     const response = await fetch(`${BACKEND_URL}/api/paypal/sync/${this.userId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ startDate, endDate }),
     });
 
-    const data = await response.json();
+    const text = await response.text();
+    console.log(`[PayPal] Raw sync response:`, text);
+    
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      throw new Error(`Ungültige Server-Antwort: ${text.substring(0, 100)}`);
+    }
 
     if (!response.ok) {
       if (data.needsAuth) {
