@@ -247,16 +247,23 @@ export async function importVolksbankCSV(
       // Build description
       const description = purpose || bookingText || counterparty;
       
-      // Categorize - PayPal transfers are automatically categorized as 'transfer'
+      // Categorize the transaction
+      // PayPal transfers from bank are marked as transfer AND as duplicate
+      // because the real transaction is in PayPal, not in the bank statement
       let category: any;
       let confidence: number;
       let txType: 'income' | 'expense' | 'transfer';
+      let isDuplicate = false;
+      let duplicateReason: string | undefined;
       
       if (isPayPal) {
-        // PayPal bank transfers are internal movements, not real income/expense
+        // PayPal bank transfers are internal movements
+        // They should be marked as duplicates because the real payment is in PayPal
         category = 'transfer';
         confidence = 0.95;
         txType = 'transfer';
+        isDuplicate = true;
+        duplicateReason = 'PayPal-Überweisung (echte Zahlung in PayPal)';
       } else {
         const result = categorizationService.categorize(description, amount);
         category = result.category;
@@ -277,6 +284,8 @@ export async function importVolksbankCSV(
         confidence,
         sourceAccount: 'volksbank',
         externalId,
+        // Mark PayPal transfers as duplicates
+        ...(isDuplicate ? { isDuplicate, duplicateReason } : {}),
         // Mark PayPal transfers specially
         ...(isPayPal && markPayPalAsLinked && paypalRef ? { linkedPayPalRef: paypalRef } : {}),
       };

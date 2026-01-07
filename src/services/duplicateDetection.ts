@@ -30,6 +30,14 @@ const PAYPAL_TRANSFER_PATTERNS = [
   /paypal europe/i,
 ];
 
+// Patterns for PayPal Guthaben-Transfer in PayPal transactions
+const PAYPAL_GUTHABEN_TRANSFER_PATTERNS = [
+  /guthaben.?transfer/i,
+  /bank.?transfer/i,
+  /guthaben.*paypal/i,
+  /paypal.*guthaben/i,
+];
+
 class DuplicateDetectionService {
   /**
    * Find potential duplicates between transactions from different accounts
@@ -154,12 +162,89 @@ class DuplicateDetectionService {
   }
 
   /**
+   * Check if a PayPal transaction is a Guthaben-Transfer
+   */
+  isPayPalGuthabenTransfer(transaction: Transaction): boolean {
+    if (transaction.sourceAccount !== 'paypal') return false;
+    return PAYPAL_GUTHABEN_TRANSFER_PATTERNS.some(p => 
+      p.test(transaction.description) || p.test(transaction.counterparty)
+    );
+  }
+
+  /**
+   * Link PayPal Guthaben-Transfers with their corresponding real payments
+   * A Guthaben-Transfer funds a payment, so they have the same amount and close dates
+   */
+  linkGuthabenTransfersToPayments(transactions: Transaction[]): Transaction[] {
+    const updated = [...transactions];
+    
+    // Find all PayPal Guthaben-Transfers
+    const guthabenTransfers = updated.filter(t => 
+      t.sourceAccount === 'paypal' && this.isPayPalGuthabenTransfer(t)
+    );
+    
+    // Find all real PayPal payments (not Guthaben-Transfers)
+    const realPayments = updated.filter(t => 
+      t.sourceAccount === 'paypal' && 
+      !this.isPayPalGuthabenTransfer(t) &&
+      t.amount < 0 // Only expenses
+    );
+    
+    for (const transfer of guthabenTransfers) {
+      const transferIdx = updated.findIndex(t => t.id === transfer.id);
+      if (transferIdx === -1) continue;
+      
+      // Find a matching payment (same amount, within 1 day)
+      const matchingPayment = realPayments.find(payment => {
+        const amountMatch = Math.abs(Math.abs(transfer.amount) - Math.abs(payment.amount)) < 0.01;
+        const transferDate = new Date(transfer.date);
+        const paymentDate = new Date(payment.date);
+        const daysDiff = Math.abs(transferDate.getTime() - paymentDate.getTime()) / (1000 * 60 * 60 * 24);
+        const dateMatch = daysDiff <= 1;
+        
+        return amountMatch && dateMatch;
+      });
+      
+      if (matchingPayment) {
+        // Mark the Guthaben-Transfer as duplicate, link to the real payment
+        updated[transferIdx] = {
+          ...updated[transferIdx],
+          isDuplicate: true,
+          isGuthabenTransfer: true,
+          linkedPaymentId: matchingPayment.id,
+          duplicateReason: `Guthaben-Transfer für: ${matchingPayment.description}`,
+          // Preserve original payment info for reference
+          originalPaymentInfo: {
+            description: matchingPayment.description,
+            counterparty: matchingPayment.counterparty,
+            category: matchingPayment.category,
+          },
+        };
+      } else {
+        // No matching payment found - this might be a standalone transfer
+        // Still mark as Guthaben-Transfer but not as duplicate
+        updated[transferIdx] = {
+          ...updated[transferIdx],
+          isGuthabenTransfer: true,
+          category: 'transfer' as any,
+          type: 'transfer',
+        };
+      }
+    }
+    
+    return updated;
+  }
+
+  /**
    * Auto-mark duplicates in a transaction list
    * Returns the updated list with isDuplicate flags set
    */
   markDuplicates(transactions: Transaction[]): Transaction[] {
     const duplicates = this.findDuplicates(transactions);
-    const updatedTransactions = [...transactions];
+    let updatedTransactions = [...transactions];
+    
+    // First, link PayPal Guthaben-Transfers to their real payments
+    updatedTransactions = this.linkGuthabenTransfersToPayments(updatedTransactions);
     
     for (const match of duplicates) {
       // Find the transactions in the list
@@ -184,13 +269,13 @@ class DuplicateDetectionService {
       }
     }
     
-    // Also mark PayPal balance transfers
+    // Also mark PayPal balance transfers from bank
     for (let i = 0; i < updatedTransactions.length; i++) {
       if (this.isPayPalTransfer(updatedTransactions[i])) {
         updatedTransactions[i] = {
           ...updatedTransactions[i],
           isDuplicate: true,
-          duplicateReason: 'PayPal Guthaben-Transfer',
+          duplicateReason: 'PayPal Guthaben-Transfer (Bank)',
         };
       }
     }

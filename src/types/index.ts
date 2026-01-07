@@ -45,6 +45,14 @@ export interface Transaction {
   isDuplicate?: boolean; // True if this is a duplicate (hidden from totals)
   duplicateReason?: string; // Why it was marked as duplicate
   linkedPayPalRef?: string; // Reference to linked PayPal transaction
+  // PayPal Guthaben-Transfer tracking
+  isGuthabenTransfer?: boolean; // True if this is a PayPal Guthaben-Transfer
+  linkedPaymentId?: string; // ID of the actual payment this transfer funded
+  originalPaymentInfo?: { // Preserved payment info when marking as duplicate
+    description: string;
+    counterparty: string;
+    category: Category;
+  };
 }
 
 // Duplicate detection result

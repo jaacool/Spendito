@@ -65,8 +65,17 @@ export default function HomeScreen() {
       // Filter by account (with fallback for old transactions)
       const txAccount = t.sourceAccount || 'volksbank';
       if (accountFilter !== 'all' && txAccount !== accountFilter) return false;
-      // Filter duplicates
-      if (!showDuplicates && t.isDuplicate) return false;
+      
+      // In "Kombi" view (all accounts), hide duplicates and Guthaben-Transfers automatically
+      // In single account views, show everything (user can toggle duplicates manually)
+      if (accountFilter === 'all') {
+        // Always hide duplicates in Kombi view (unless explicitly showing them)
+        if (!showDuplicates && (t.isDuplicate || t.isGuthabenTransfer)) return false;
+      } else {
+        // In single account view, respect the showDuplicates toggle
+        if (!showDuplicates && t.isDuplicate) return false;
+      }
+      
       // Filter only open/unverified transactions
       if (showOnlyOpen && (t.isUserConfirmed || t.isManuallyCategized)) return false;
       return true;
@@ -302,7 +311,7 @@ export default function HomeScreen() {
                   onPress={() => setAccountFilter('all')}
                 >
                   <Text style={[styles.accountFilterText, accountFilter === 'all' && styles.accountFilterTextActive]}>
-                    Alle
+                    Kombi
                   </Text>
                 </Pressable>
                 <Pressable

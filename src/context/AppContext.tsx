@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Transaction, YearSummary, Category } from '../types';
 import { storageService } from '../services/storage';
 import { categorizationService } from '../services/categorization';
+import { duplicateDetectionService } from '../services/duplicateDetection';
 import { generateMockData } from '../services/mockData';
 
 interface AppContextType {
@@ -63,7 +64,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [selectedYear, isLoading]);
 
   function updateYearData(year: number) {
-    const yearTransactions = storageService.getTransactionsByYear(year);
+    let yearTransactions = storageService.getTransactionsByYear(year);
+    
+    // Apply duplicate detection to link PayPal Guthaben-Transfers with real payments
+    yearTransactions = duplicateDetectionService.linkGuthabenTransfersToPayments(yearTransactions);
+    
     setTransactions(yearTransactions);
     setYearSummary(storageService.getYearSummary(year));
     setAvailableYears(storageService.getAvailableYears());
