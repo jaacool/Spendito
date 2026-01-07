@@ -37,8 +37,15 @@ export function TransactionItem({ transaction, onCategoryChange, onConfirm }: Tr
     return format(new Date(dateString), 'd. MMM', { locale: de });
   };
 
-  // Show all categories: income, expense, and transfer
-  const categories = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES, ...TRANSFER_CATEGORIES];
+  // Show relevant categories based on transaction type
+  // Income transactions: income categories + transfer
+  // Expense transactions: expense categories + transfer
+  // Transfer transactions: all categories (in case user wants to reclassify)
+  const categories = isTransfer 
+    ? [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES, ...TRANSFER_CATEGORIES]
+    : isIncome 
+      ? [...INCOME_CATEGORIES, ...TRANSFER_CATEGORIES]
+      : [...EXPENSE_CATEGORIES, ...TRANSFER_CATEGORIES];
 
   return (
     <>
