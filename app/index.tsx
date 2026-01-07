@@ -9,9 +9,10 @@ import {
   RefreshControl,
   Platform,
   useWindowDimensions,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Menu, Dog, TrendingUp, TrendingDown, Building2, Wallet, Settings, BrainCircuit } from 'lucide-react-native';
+import { Menu, Dog, TrendingUp, TrendingDown, Building2, Wallet, Settings, BrainCircuit, Search, X } from 'lucide-react-native';
 import { useApp } from '../src/context/AppContext';
 import { isDesktop } from '../src/services/platform';
 import { 
@@ -51,6 +52,8 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -78,6 +81,26 @@ export default function HomeScreen() {
       
       // Filter only open/unverified transactions
       if (showOnlyOpen && (t.isUserConfirmed || t.isManuallyCategized)) return false;
+      
+      // Search filter - matches amount or description/counterparty
+      if (searchQuery.trim()) {
+        const query = searchQuery.trim().toLowerCase();
+        // Check if query is a number (amount search)
+        const numericQuery = parseFloat(query.replace(',', '.'));
+        if (!isNaN(numericQuery)) {
+          // Search by amount (absolute value)
+          if (Math.abs(t.amount) !== numericQuery && 
+              !Math.abs(t.amount).toString().includes(query)) {
+            return false;
+          }
+        } else {
+          // Search by description or counterparty
+          const matchesDescription = t.description.toLowerCase().includes(query);
+          const matchesCounterparty = t.counterparty.toLowerCase().includes(query);
+          if (!matchesDescription && !matchesCounterparty) return false;
+        }
+      }
+      
       return true;
     })
     // Sort by date, newest first
@@ -333,6 +356,35 @@ export default function HomeScreen() {
                   </Text>
                 </Pressable>
               </View>
+
+              {/* Search Bar */}
+              {showSearch ? (
+                <View style={styles.searchContainer}>
+                  <Search size={18} color="#9ca3af" style={styles.searchIcon} />
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Suche nach Betrag (z.B. 500) oder Text..."
+                    placeholderTextColor="#9ca3af"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    autoFocus
+                  />
+                  <Pressable 
+                    onPress={() => { setShowSearch(false); setSearchQuery(''); }}
+                    style={styles.searchCloseButton}
+                  >
+                    <X size={18} color="#6b7280" />
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable 
+                  style={styles.searchButton}
+                  onPress={() => setShowSearch(true)}
+                >
+                  <Search size={16} color="#6b7280" />
+                  <Text style={styles.searchButtonText}>Suchen...</Text>
+                </Pressable>
+              )}
 
               {/* Filter Toggles */}
               <View style={styles.filterToggles}>
@@ -667,6 +719,46 @@ const styles = StyleSheet.create({
   },
   accountFilterTextActive: {
     color: '#0ea5e9',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    paddingHorizontal: 12,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#1f2937',
+  },
+  searchCloseButton: {
+    padding: 4,
+  },
+  searchButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  searchButtonText: {
+    fontSize: 14,
+    color: '#9ca3af',
   },
   filterToggles: {
     flexDirection: 'row',
