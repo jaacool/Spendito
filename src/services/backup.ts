@@ -72,42 +72,59 @@ class BackupService {
    * Importiert Daten aus einer JSON-Datei
    */
   async importData(): Promise<{ success: boolean; message: string }> {
+    console.log('[Backup] importData() called');
     try {
+      console.log('[Backup] Opening DocumentPicker...');
       const result = await DocumentPicker.getDocumentAsync({
         type: 'application/json',
         copyToCacheDirectory: true,
       });
 
+      console.log('[Backup] DocumentPicker result:', JSON.stringify(result, null, 2));
+      
       if (result.canceled) {
+        console.log('[Backup] User canceled the picker');
         return { success: false, message: 'Import abgebrochen' };
       }
 
       const asset = result.assets[0];
+      console.log('[Backup] Selected asset:', asset.name, 'URI:', asset.uri, 'File:', !!asset.file);
+      
       let jsonContent: string;
 
       if (Platform.OS === 'web') {
+        console.log('[Backup] Platform is web, trying to read file...');
         // In Electron/Web, we can use the file object or fetch the URI
         if (asset.file) {
+          console.log('[Backup] Using asset.file.text()');
           jsonContent = await asset.file.text();
         } else {
+          console.log('[Backup] Using fetch() for URI:', asset.uri);
           const response = await fetch(asset.uri);
           jsonContent = await response.text();
         }
       } else {
+        console.log('[Backup] Platform is native, using FileSystem');
         jsonContent = await FileSystem.readAsStringAsync(asset.uri, {
           encoding: FileSystem.EncodingType.UTF8,
         });
       }
 
+      console.log('[Backup] JSON content length:', jsonContent.length);
+      console.log('[Backup] JSON preview:', jsonContent.substring(0, 200));
+
       let backup: BackupData;
       try {
         backup = JSON.parse(jsonContent);
+        console.log('[Backup] Parsed backup, version:', backup.version, 'keys:', Object.keys(backup.storage || {}).length);
       } catch (e) {
+        console.error('[Backup] JSON parse error:', e);
         throw new Error('Datei konnte nicht als JSON gelesen werden. Ist es ein gültiges Backup?');
       }
 
       // Sanity Check
       if (!backup.version || !backup.storage) {
+        console.error('[Backup] Invalid backup format - missing version or storage');
         throw new Error('Ungültiges Backup-Format');
       }
 
@@ -117,17 +134,21 @@ class BackupService {
         .filter(([_, value]) => value !== null)
         .map(([key, value]) => [key, value as string]);
 
+      console.log('[Backup] Writing', pairs.length, 'entries to AsyncStorage');
+
       if (pairs.length > 0) {
         await AsyncStorage.multiSet(pairs);
+        console.log('[Backup] AsyncStorage.multiSet completed successfully');
         return { 
           success: true, 
           message: `${pairs.length} Datensätze erfolgreich importiert. Bitte starte die App neu.` 
         };
       }
 
+      console.log('[Backup] No data found in backup');
       return { success: false, message: 'Keine Daten im Backup gefunden' };
     } catch (error) {
-      console.error('Import failed:', error);
+      console.error('[Backup] Import failed with error:', error);
       throw new Error('Import fehlgeschlagen: ' + (error instanceof Error ? error.message : String(error)));
     }
   }

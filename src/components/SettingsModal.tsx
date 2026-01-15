@@ -550,20 +550,40 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   };
 
   const handleImportBackup = async () => {
+    console.log('[Settings] handleImportBackup called');
     setIsBackupLoading(true);
     try {
+      console.log('[Settings] Calling backupService.importData()...');
       const result = await backupService.importData();
+      console.log('[Settings] Import result:', result);
       if (result.success) {
-        Alert.alert('Import erfolgreich', result.message, [
-          { text: 'OK', onPress: () => refreshData() }
-        ]);
+        console.log('[Settings] Import successful, showing alert');
+        if (typeof window !== 'undefined' && window.alert) {
+          window.alert('Import erfolgreich: ' + result.message);
+          refreshData();
+        } else {
+          Alert.alert('Import erfolgreich', result.message, [
+            { text: 'OK', onPress: () => refreshData() }
+          ]);
+        }
       } else {
-        Alert.alert('Import', result.message);
+        console.log('[Settings] Import not successful:', result.message);
+        if (typeof window !== 'undefined' && window.alert) {
+          window.alert('Import: ' + result.message);
+        } else {
+          Alert.alert('Import', result.message);
+        }
       }
     } catch (error: any) {
-      Alert.alert('Import fehlgeschlagen', error.message);
+      console.error('[Settings] Import error:', error);
+      if (typeof window !== 'undefined' && window.alert) {
+        window.alert('Import fehlgeschlagen: ' + error.message);
+      } else {
+        Alert.alert('Import fehlgeschlagen', error.message);
+      }
     } finally {
       setIsBackupLoading(false);
+      console.log('[Settings] handleImportBackup finished');
     }
   };
 
