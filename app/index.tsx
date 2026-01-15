@@ -169,6 +169,122 @@ export default function HomeScreen() {
             <View style={styles.desktopTwoColumn}>
               {/* Transactions Section (Left on Desktop) */}
               <View style={styles.desktopTransactionsColumn}>
+                <View style={styles.desktopTransactionsHeader}>
+                  {/* Transaction Tabs */}
+                  <View style={styles.tabsContainer}>
+                    <Pressable
+                      style={[styles.tab, activeTab === 'all' && styles.tabActive]}
+                      onPress={() => setActiveTab('all')}
+                    >
+                      <Text style={[styles.tabText, activeTab === 'all' && styles.tabTextActive]}>
+                        Alle
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.tab, activeTab === 'income' && styles.tabActive]}
+                      onPress={() => setActiveTab('income')}
+                    >
+                      <Text style={[styles.tabText, activeTab === 'income' && styles.tabTextActive]}>
+                        Einnahmen
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.tab, activeTab === 'expense' && styles.tabActive]}
+                      onPress={() => setActiveTab('expense')}
+                    >
+                      <Text style={[styles.tabText, activeTab === 'expense' && styles.tabTextActive]}>
+                        Ausgaben
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  {/* Account Filter */}
+                  <View style={styles.accountFilterContainer}>
+                    <Pressable
+                      style={[styles.accountFilterButton, accountFilter === 'all' && styles.accountFilterActive]}
+                      onPress={() => setAccountFilter('all')}
+                    >
+                      <Text style={[styles.accountFilterText, accountFilter === 'all' && styles.accountFilterTextActive]}>
+                        Kombi
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.accountFilterButton, accountFilter === 'volksbank' && styles.accountFilterActive]}
+                      onPress={() => setAccountFilter('volksbank')}
+                    >
+                      <Building2 size={12} color={accountFilter === 'volksbank' ? '#0066b3' : '#6b7280'} />
+                      <Text style={[styles.accountFilterText, accountFilter === 'volksbank' && { color: '#0066b3' }]}>
+                        Volksbank
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.accountFilterButton, accountFilter === 'paypal' && styles.accountFilterActive]}
+                      onPress={() => setAccountFilter('paypal')}
+                    >
+                      <Wallet size={12} color={accountFilter === 'paypal' ? '#003087' : '#6b7280'} />
+                      <Text style={[styles.accountFilterText, accountFilter === 'paypal' && { color: '#003087' }]}>
+                        PayPal
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  {/* Search Bar */}
+                  {showSearch ? (
+                    <View style={styles.searchContainer}>
+                      <Search size={18} color="#9ca3af" style={styles.searchIcon} />
+                      <TextInput
+                        style={styles.searchInput}
+                        placeholder="Suche nach Betrag (z.B. 500) oder Text..."
+                        placeholderTextColor="#9ca3af"
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        autoFocus
+                      />
+                      <Pressable 
+                        onPress={() => { setShowSearch(false); setSearchQuery(''); }}
+                        style={styles.searchCloseButton}
+                      >
+                        <X size={18} color="#6b7280" />
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <Pressable 
+                      style={styles.searchButton}
+                      onPress={() => setShowSearch(true)}
+                    >
+                      <Search size={16} color="#6b7280" />
+                      <Text style={styles.searchButtonText}>Suchen...</Text>
+                    </Pressable>
+                  )}
+
+                  {/* Filter Toggles */}
+                  <View style={styles.filterToggles}>
+                    {/* Open Transactions Toggle */}
+                    {openCount > 0 && (
+                      <Pressable 
+                        style={[styles.filterToggle, showOnlyOpen && styles.filterToggleActive]}
+                        onPress={() => setShowOnlyOpen(!showOnlyOpen)}
+                      >
+                        <Text style={[styles.filterToggleText, showOnlyOpen && styles.filterToggleTextActive]}>
+                          {showOnlyOpen ? 'Alle anzeigen' : `${openCount} offen`}
+                        </Text>
+                      </Pressable>
+                    )}
+                    
+                    {/* Duplicate Toggle */}
+                    {duplicateCount > 0 && (
+                      <Pressable 
+                        style={styles.duplicateToggle}
+                        onPress={() => setShowDuplicates(!showDuplicates)}
+                      >
+                        <Text style={styles.duplicateToggleText}>
+                          {showDuplicates ? 'Duplikate ausblenden' : `${duplicateCount} Duplikate`}
+                        </Text>
+                      </Pressable>
+                    )}
+                  </View>
+                </View>
+
                 <ScrollView 
                   style={styles.desktopColumnScroll}
                   showsVerticalScrollIndicator={false}
@@ -181,120 +297,6 @@ export default function HomeScreen() {
                   }
                 >
                   <View style={styles.desktopColumnContent}>
-                    {/* Transaction Tabs */}
-                    <View style={styles.tabsContainer}>
-                      <Pressable
-                        style={[styles.tab, activeTab === 'all' && styles.tabActive]}
-                        onPress={() => setActiveTab('all')}
-                      >
-                        <Text style={[styles.tabText, activeTab === 'all' && styles.tabTextActive]}>
-                          Alle
-                        </Text>
-                      </Pressable>
-                      <Pressable
-                        style={[styles.tab, activeTab === 'income' && styles.tabActive]}
-                        onPress={() => setActiveTab('income')}
-                      >
-                        <Text style={[styles.tabText, activeTab === 'income' && styles.tabTextActive]}>
-                          Einnahmen
-                        </Text>
-                      </Pressable>
-                      <Pressable
-                        style={[styles.tab, activeTab === 'expense' && styles.tabActive]}
-                        onPress={() => setActiveTab('expense')}
-                      >
-                        <Text style={[styles.tabText, activeTab === 'expense' && styles.tabTextActive]}>
-                          Ausgaben
-                        </Text>
-                      </Pressable>
-                    </View>
-
-                    {/* Account Filter */}
-                    <View style={styles.accountFilterContainer}>
-                      <Pressable
-                        style={[styles.accountFilterButton, accountFilter === 'all' && styles.accountFilterActive]}
-                        onPress={() => setAccountFilter('all')}
-                      >
-                        <Text style={[styles.accountFilterText, accountFilter === 'all' && styles.accountFilterTextActive]}>
-                          Kombi
-                        </Text>
-                      </Pressable>
-                      <Pressable
-                        style={[styles.accountFilterButton, accountFilter === 'volksbank' && styles.accountFilterActive]}
-                        onPress={() => setAccountFilter('volksbank')}
-                      >
-                        <Building2 size={12} color={accountFilter === 'volksbank' ? '#0066b3' : '#6b7280'} />
-                        <Text style={[styles.accountFilterText, accountFilter === 'volksbank' && { color: '#0066b3' }]}>
-                          Volksbank
-                        </Text>
-                      </Pressable>
-                      <Pressable
-                        style={[styles.accountFilterButton, accountFilter === 'paypal' && styles.accountFilterActive]}
-                        onPress={() => setAccountFilter('paypal')}
-                      >
-                        <Wallet size={12} color={accountFilter === 'paypal' ? '#003087' : '#6b7280'} />
-                        <Text style={[styles.accountFilterText, accountFilter === 'paypal' && { color: '#003087' }]}>
-                          PayPal
-                        </Text>
-                      </Pressable>
-                    </View>
-
-                    {/* Search Bar */}
-                    {showSearch ? (
-                      <View style={styles.searchContainer}>
-                        <Search size={18} color="#9ca3af" style={styles.searchIcon} />
-                        <TextInput
-                          style={styles.searchInput}
-                          placeholder="Suche nach Betrag (z.B. 500) oder Text..."
-                          placeholderTextColor="#9ca3af"
-                          value={searchQuery}
-                          onChangeText={setSearchQuery}
-                          autoFocus
-                        />
-                        <Pressable 
-                          onPress={() => { setShowSearch(false); setSearchQuery(''); }}
-                          style={styles.searchCloseButton}
-                        >
-                          <X size={18} color="#6b7280" />
-                        </Pressable>
-                      </View>
-                    ) : (
-                      <Pressable 
-                        style={styles.searchButton}
-                        onPress={() => setShowSearch(true)}
-                      >
-                        <Search size={16} color="#6b7280" />
-                        <Text style={styles.searchButtonText}>Suchen...</Text>
-                      </Pressable>
-                    )}
-
-                    {/* Filter Toggles */}
-                    <View style={styles.filterToggles}>
-                      {/* Open Transactions Toggle */}
-                      {openCount > 0 && (
-                        <Pressable 
-                          style={[styles.filterToggle, showOnlyOpen && styles.filterToggleActive]}
-                          onPress={() => setShowOnlyOpen(!showOnlyOpen)}
-                        >
-                          <Text style={[styles.filterToggleText, showOnlyOpen && styles.filterToggleTextActive]}>
-                            {showOnlyOpen ? 'Alle anzeigen' : `${openCount} offen`}
-                          </Text>
-                        </Pressable>
-                      )}
-                      
-                      {/* Duplicate Toggle */}
-                      {duplicateCount > 0 && (
-                        <Pressable 
-                          style={styles.duplicateToggle}
-                          onPress={() => setShowDuplicates(!showDuplicates)}
-                        >
-                          <Text style={styles.duplicateToggleText}>
-                            {showDuplicates ? 'Duplikate ausblenden' : `${duplicateCount} Duplikate`}
-                          </Text>
-                        </Pressable>
-                      )}
-                    </View>
-
                     {/* Transactions List */}
                     <View style={styles.transactionsContainer}>
                       <Text style={styles.transactionsTitle}>
@@ -795,6 +797,10 @@ const styles = StyleSheet.create({
   desktopTransactionsColumn: {
     flex: 1.5,
     height: '100%',
+  },
+  desktopTransactionsHeader: {
+    paddingBottom: 8,
+    backgroundColor: '#e8f4fc',
   },
   desktopCategoriesColumn: {
     flex: 1,
