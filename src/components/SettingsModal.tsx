@@ -601,10 +601,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </View>
                     <View style={styles.connectionDetails}>
                       <Text style={styles.connectionName}>Backup & Restore</Text>
-                      <Text style={styles.disconnectedText}>Daten exportieren oder wiederherstellen</Text>
                     </View>
                   </View>
-                  <View style={styles.paypalButtons}>
+                  <View style={styles.backupButtons}>
                     <TouchableOpacity 
                       style={[styles.connectButton, { backgroundColor: '#6366f115', marginRight: 8, cursor: 'pointer' } as any]}
                       onPress={handleExportBackup}
@@ -1377,6 +1376,11 @@ const styles = StyleSheet.create({
   },
   // PayPal styles
   paypalButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  backupButtons: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,

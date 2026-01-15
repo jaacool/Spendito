@@ -82,19 +82,29 @@ class BackupService {
         return { success: false, message: 'Import abgebrochen' };
       }
 
-      const fileUri = result.assets[0].uri;
+      const asset = result.assets[0];
       let jsonContent: string;
 
       if (Platform.OS === 'web') {
-        const response = await fetch(fileUri);
-        jsonContent = await response.text();
+        // In Electron/Web, we can use the file object or fetch the URI
+        if (asset.file) {
+          jsonContent = await asset.file.text();
+        } else {
+          const response = await fetch(asset.uri);
+          jsonContent = await response.text();
+        }
       } else {
-        jsonContent = await FileSystem.readAsStringAsync(fileUri, {
+        jsonContent = await FileSystem.readAsStringAsync(asset.uri, {
           encoding: FileSystem.EncodingType.UTF8,
         });
       }
 
-      const backup: BackupData = JSON.parse(jsonContent);
+      let backup: BackupData;
+      try {
+        backup = JSON.parse(jsonContent);
+      } catch (e) {
+        throw new Error('Datei konnte nicht als JSON gelesen werden. Ist es ein gültiges Backup?');
+      }
 
       // Sanity Check
       if (!backup.version || !backup.storage) {
