@@ -181,86 +181,300 @@ export default function HomeScreen() {
           />
         )}
 
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={[
-            styles.scrollContent,
-            desktopMode && styles.desktopScrollContent
-          ]}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor="#0ea5e9"
-            />
-          }
-        >
-          {/* Summary Header - Only on Mobile */}
-          {!desktopMode && yearSummary && <SummaryHeader summary={yearSummary} />}
+        {desktopMode ? (
+          <View style={styles.desktopContainer}>
+            <View style={styles.desktopTwoColumn}>
+              {/* Transactions Section (Left on Desktop) */}
+              <View style={styles.desktopTransactionsColumn}>
+                <ScrollView 
+                  style={styles.desktopColumnScroll}
+                  showsVerticalScrollIndicator={false}
+                  refreshControl={
+                    <RefreshControl
+                      refreshing={refreshing}
+                      onRefresh={onRefresh}
+                      tintColor="#0ea5e9"
+                    />
+                  }
+                >
+                  <View style={styles.desktopColumnContent}>
+                    {/* Transaction Tabs */}
+                    <View style={styles.tabsContainer}>
+                      <Pressable
+                        style={[styles.tab, activeTab === 'all' && styles.tabActive]}
+                        onPress={() => setActiveTab('all')}
+                      >
+                        <Text style={[styles.tabText, activeTab === 'all' && styles.tabTextActive]}>
+                          Alle
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.tab, activeTab === 'income' && styles.tabActive]}
+                        onPress={() => setActiveTab('income')}
+                      >
+                        <Text style={[styles.tabText, activeTab === 'income' && styles.tabTextActive]}>
+                          Einnahmen
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.tab, activeTab === 'expense' && styles.tabActive]}
+                        onPress={() => setActiveTab('expense')}
+                      >
+                        <Text style={[styles.tabText, activeTab === 'expense' && styles.tabTextActive]}>
+                          Ausgaben
+                        </Text>
+                      </Pressable>
+                    </View>
 
-          {/* Mobile Category Cards */}
-          {!desktopMode && yearSummary && (
-            <View style={styles.categoriesSection}>
-              {/* Income Categories */}
-              {yearSummary.incomeByCategory.length > 0 && (
-                <View style={styles.categorySection}>
-                  <View style={styles.sectionHeader}>
-                    <TrendingUp size={18} color="#22c55e" />
-                    <Text style={styles.sectionTitle}>Einnahmen</Text>
-                  </View>
-                  <ScrollView 
-                    horizontal 
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.categoryScrollContent}
-                  >
-                    {yearSummary.incomeByCategory.map((cat) => (
-                      <CategoryCard
-                        key={cat.category}
-                        category={cat.category}
-                        total={cat.total}
-                        count={cat.count}
-                        percentage={cat.percentage}
-                        type="income"
-                      />
-                    ))}
-                  </ScrollView>
-                  <CategoryBar data={yearSummary.incomeByCategory} height={6} />
-                </View>
-              )}
+                    {/* Account Filter */}
+                    <View style={styles.accountFilterContainer}>
+                      <Pressable
+                        style={[styles.accountFilterButton, accountFilter === 'all' && styles.accountFilterActive]}
+                        onPress={() => setAccountFilter('all')}
+                      >
+                        <Text style={[styles.accountFilterText, accountFilter === 'all' && styles.accountFilterTextActive]}>
+                          Kombi
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.accountFilterButton, accountFilter === 'volksbank' && styles.accountFilterActive]}
+                        onPress={() => setAccountFilter('volksbank')}
+                      >
+                        <Building2 size={12} color={accountFilter === 'volksbank' ? '#0066b3' : '#6b7280'} />
+                        <Text style={[styles.accountFilterText, accountFilter === 'volksbank' && { color: '#0066b3' }]}>
+                          Volksbank
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.accountFilterButton, accountFilter === 'paypal' && styles.accountFilterActive]}
+                        onPress={() => setAccountFilter('paypal')}
+                      >
+                        <Wallet size={12} color={accountFilter === 'paypal' ? '#003087' : '#6b7280'} />
+                        <Text style={[styles.accountFilterText, accountFilter === 'paypal' && { color: '#003087' }]}>
+                          PayPal
+                        </Text>
+                      </Pressable>
+                    </View>
 
-              {/* Expense Categories */}
-              {yearSummary.expenseByCategory.length > 0 && (
-                <View style={styles.categorySection}>
-                  <View style={styles.sectionHeader}>
-                    <TrendingDown size={18} color="#ef4444" />
-                    <Text style={styles.sectionTitle}>Ausgaben</Text>
+                    {/* Search Bar */}
+                    {showSearch ? (
+                      <View style={styles.searchContainer}>
+                        <Search size={18} color="#9ca3af" style={styles.searchIcon} />
+                        <TextInput
+                          style={styles.searchInput}
+                          placeholder="Suche nach Betrag (z.B. 500) oder Text..."
+                          placeholderTextColor="#9ca3af"
+                          value={searchQuery}
+                          onChangeText={setSearchQuery}
+                          autoFocus
+                        />
+                        <Pressable 
+                          onPress={() => { setShowSearch(false); setSearchQuery(''); }}
+                          style={styles.searchCloseButton}
+                        >
+                          <X size={18} color="#6b7280" />
+                        </Pressable>
+                      </View>
+                    ) : (
+                      <Pressable 
+                        style={styles.searchButton}
+                        onPress={() => setShowSearch(true)}
+                      >
+                        <Search size={16} color="#6b7280" />
+                        <Text style={styles.searchButtonText}>Suchen...</Text>
+                      </Pressable>
+                    )}
+
+                    {/* Filter Toggles */}
+                    <View style={styles.filterToggles}>
+                      {/* Open Transactions Toggle */}
+                      {openCount > 0 && (
+                        <Pressable 
+                          style={[styles.filterToggle, showOnlyOpen && styles.filterToggleActive]}
+                          onPress={() => setShowOnlyOpen(!showOnlyOpen)}
+                        >
+                          <Text style={[styles.filterToggleText, showOnlyOpen && styles.filterToggleTextActive]}>
+                            {showOnlyOpen ? 'Alle anzeigen' : `${openCount} offen`}
+                          </Text>
+                        </Pressable>
+                      )}
+                      
+                      {/* Duplicate Toggle */}
+                      {duplicateCount > 0 && (
+                        <Pressable 
+                          style={styles.duplicateToggle}
+                          onPress={() => setShowDuplicates(!showDuplicates)}
+                        >
+                          <Text style={styles.duplicateToggleText}>
+                            {showDuplicates ? 'Duplikate ausblenden' : `${duplicateCount} Duplikate`}
+                          </Text>
+                        </Pressable>
+                      )}
+                    </View>
+
+                    {/* Transactions List */}
+                    <View style={styles.transactionsContainer}>
+                      <Text style={styles.transactionsTitle}>
+                        {filteredTransactions.length} Buchungen
+                      </Text>
+                      
+                      <View style={styles.transactionsList}>
+                        {filteredTransactions.map((transaction) => (
+                          <TransactionItem
+                            key={transaction.id}
+                            transaction={transaction}
+                            onCategoryChange={(category) => handleCategoryChange(transaction.id, category)}
+                            onConfirm={() => confirmTransaction(transaction.id)}
+                          />
+                        ))}
+                      </View>
+                    </View>
                   </View>
-                  <ScrollView 
-                    horizontal 
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.categoryScrollContent}
-                  >
-                    {yearSummary.expenseByCategory.map((cat) => (
-                      <CategoryCard
-                        key={cat.category}
-                        category={cat.category}
-                        total={cat.total}
-                        count={cat.count}
-                        percentage={cat.percentage}
-                        type="expense"
-                      />
-                    ))}
-                  </ScrollView>
-                  <CategoryBar data={yearSummary.expenseByCategory} height={6} />
-                </View>
-              )}
+                </ScrollView>
+              </View>
+
+              {/* Category Cards Section (Right on Desktop) */}
+              <View style={styles.desktopCategoriesColumn}>
+                <ScrollView 
+                  style={styles.desktopColumnScroll}
+                  showsVerticalScrollIndicator={false}
+                >
+                  <View style={styles.desktopColumnContent}>
+                    {yearSummary && (
+                      <View style={styles.categoriesSection}>
+                        {/* Summary Header on Desktop - Right side */}
+                        <SummaryHeader summary={yearSummary} />
+
+                        {/* Income Categories */}
+                        {yearSummary.incomeByCategory.length > 0 && (
+                          <View style={styles.categorySection}>
+                            <View style={styles.sectionHeader}>
+                              <TrendingUp size={18} color="#22c55e" />
+                              <Text style={styles.sectionTitle}>Einnahmen</Text>
+                            </View>
+                            <View style={styles.desktopCategoryGrid}>
+                              {yearSummary.incomeByCategory.map((cat) => (
+                                <View key={cat.category} style={styles.desktopCategoryCardWrapper}>
+                                  <CategoryCard
+                                    category={cat.category}
+                                    total={cat.total}
+                                    count={cat.count}
+                                    percentage={cat.percentage}
+                                    type="income"
+                                  />
+                                </View>
+                              ))}
+                            </View>
+                            <CategoryBar data={yearSummary.incomeByCategory} height={6} />
+                          </View>
+                        )}
+
+                        {/* Expense Categories */}
+                        {yearSummary.expenseByCategory.length > 0 && (
+                          <View style={[styles.categorySection, { marginTop: 24 }]}>
+                            <View style={styles.sectionHeader}>
+                              <TrendingDown size={18} color="#ef4444" />
+                              <Text style={styles.sectionTitle}>Ausgaben</Text>
+                            </View>
+                            <View style={styles.desktopCategoryGrid}>
+                              {yearSummary.expenseByCategory.map((cat) => (
+                                <View key={cat.category} style={styles.desktopCategoryCardWrapper}>
+                                  <CategoryCard
+                                    category={cat.category}
+                                    total={cat.total}
+                                    count={cat.count}
+                                    percentage={cat.percentage}
+                                    type="expense"
+                                  />
+                                </View>
+                              ))}
+                            </View>
+                            <CategoryBar data={yearSummary.expenseByCategory} height={6} />
+                          </View>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                </ScrollView>
+              </View>
             </View>
-          )}
+          </View>
+        ) : (
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor="#0ea5e9"
+              />
+            }
+          >
+            {/* Summary Header - Only on Mobile */}
+            {yearSummary && <SummaryHeader summary={yearSummary} />}
 
-          <View style={desktopMode ? styles.desktopTwoColumn : null}>
-            {/* Transactions Section (Left on Desktop) */}
-            <View style={desktopMode ? styles.desktopTransactionsColumn : null}>
+            {/* Mobile Category Cards */}
+            {yearSummary && (
+              <View style={styles.categoriesSection}>
+                {/* Income Categories */}
+                {yearSummary.incomeByCategory.length > 0 && (
+                  <View style={styles.categorySection}>
+                    <View style={styles.sectionHeader}>
+                      <TrendingUp size={18} color="#22c55e" />
+                      <Text style={styles.sectionTitle}>Einnahmen</Text>
+                    </View>
+                    <ScrollView 
+                      horizontal 
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.categoryScrollContent}
+                    >
+                      {yearSummary.incomeByCategory.map((cat) => (
+                        <CategoryCard
+                          key={cat.category}
+                          category={cat.category}
+                          total={cat.total}
+                          count={cat.count}
+                          percentage={cat.percentage}
+                          type="income"
+                        />
+                      ))}
+                    </ScrollView>
+                    <CategoryBar data={yearSummary.incomeByCategory} height={6} />
+                  </View>
+                )}
+
+                {/* Expense Categories */}
+                {yearSummary.expenseByCategory.length > 0 && (
+                  <View style={styles.categorySection}>
+                    <View style={styles.sectionHeader}>
+                      <TrendingDown size={18} color="#ef4444" />
+                      <Text style={styles.sectionTitle}>Ausgaben</Text>
+                    </View>
+                    <ScrollView 
+                      horizontal 
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.categoryScrollContent}
+                    >
+                      {yearSummary.expenseByCategory.map((cat) => (
+                        <CategoryCard
+                          key={cat.category}
+                          category={cat.category}
+                          total={cat.total}
+                          count={cat.count}
+                          percentage={cat.percentage}
+                          type="expense"
+                        />
+                      ))}
+                    </ScrollView>
+                    <CategoryBar data={yearSummary.expenseByCategory} height={6} />
+                  </View>
+                )}
+              </View>
+            )}
+
+            <View style={styles.transactionsSectionContainer}>
               {/* Transaction Tabs */}
               <View style={styles.tabsContainer}>
                 <Pressable
@@ -393,66 +607,8 @@ export default function HomeScreen() {
                 </View>
               </View>
             </View>
-
-            {/* Category Cards Section (Right on Desktop) */}
-            {desktopMode && (
-              <View style={styles.desktopCategoriesColumn}>
-                {yearSummary && (
-                  <View style={styles.desktopCategoriesFixed}>
-                    {/* Summary Header on Desktop - Right side */}
-                    <SummaryHeader summary={yearSummary} />
-
-                    {/* Income Categories */}
-                    {yearSummary.incomeByCategory.length > 0 && (
-                      <View style={styles.categorySection}>
-                        <View style={styles.sectionHeader}>
-                          <TrendingUp size={18} color="#22c55e" />
-                          <Text style={styles.sectionTitle}>Einnahmen</Text>
-                        </View>
-                        <View style={styles.desktopCategoryGrid}>
-                          {yearSummary.incomeByCategory.map((cat) => (
-                            <CategoryCard
-                              key={cat.category}
-                              category={cat.category}
-                              total={cat.total}
-                              count={cat.count}
-                              percentage={cat.percentage}
-                              type="income"
-                            />
-                          ))}
-                        </View>
-                        <CategoryBar data={yearSummary.incomeByCategory} height={6} />
-                      </View>
-                    )}
-
-                    {/* Expense Categories */}
-                    {yearSummary.expenseByCategory.length > 0 && (
-                      <View style={[styles.categorySection, { marginTop: 24 }]}>
-                        <View style={styles.sectionHeader}>
-                          <TrendingDown size={18} color="#ef4444" />
-                          <Text style={styles.sectionTitle}>Ausgaben</Text>
-                        </View>
-                        <View style={styles.desktopCategoryGrid}>
-                          {yearSummary.expenseByCategory.map((cat) => (
-                            <CategoryCard
-                              key={cat.category}
-                              category={cat.category}
-                              total={cat.total}
-                              count={cat.count}
-                              percentage={cat.percentage}
-                              type="expense"
-                            />
-                          ))}
-                        </View>
-                        <CategoryBar data={yearSummary.expenseByCategory} height={6} />
-                      </View>
-                    )}
-                  </View>
-                )}
-              </View>
-            )}
-          </View>
-        </ScrollView>
+          </ScrollView>
+        )}
       </View>
 
       {/* Side Menu (Only for Mobile) */}
@@ -637,37 +793,51 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 40,
   },
-  desktopScrollContent: {
-    maxWidth: 1200,
-    alignSelf: 'center',
-    width: '100%',
+  desktopContainer: {
+    flex: 1,
+    height: '100%',
+  },
+  desktopColumnScroll: {
+    flex: 1,
+  },
+  desktopColumnContent: {
+    paddingBottom: 40,
   },
   desktopTwoColumn: {
+    flex: 1,
     flexDirection: 'row',
     paddingHorizontal: 16,
     gap: 24,
   },
   desktopTransactionsColumn: {
     flex: 1.5,
+    height: '100%',
   },
   desktopCategoriesColumn: {
     flex: 1,
+    height: '100%',
   },
   desktopCategoriesFixed: {
-    position: Platform.OS === 'web' ? 'sticky' : 'relative' as any,
-    top: 20,
-    maxHeight: Platform.OS === 'web' ? 'calc(100vh - 100px)' : 'auto' as any,
+    // Top-level container in scrollview
+  },
+  desktopCategoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  desktopCategoryCardWrapper: {
+    width: Platform.OS === 'web' ? 'calc(50% - 6px)' : '48%' as any,
+    minWidth: 200,
+  },
+  categoriesSection: {
+    // Container for all category sections
+  },
+  transactionsSectionContainer: {
+    // Container for mobile transactions
   },
   categoryGrid: {
     flexDirection: 'row',
     flexWrap: 'nowrap',
-  },
-  desktopCategoryGrid: {
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  categoriesSection: {
-    // Container for all category sections
   },
   categorySection: {
     marginBottom: 8,
