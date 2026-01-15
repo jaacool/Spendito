@@ -127,14 +127,12 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        {!desktopMode && (
-          <Pressable 
-            onPress={() => setSideMenuOpen(true)}
-            style={styles.menuButton}
-          >
-            <Menu size={24} color="#1f2937" />
-          </Pressable>
-        )}
+        <Pressable 
+          onPress={() => setSideMenuOpen(true)}
+          style={styles.menuButton}
+        >
+          <Menu size={24} color="#1f2937" />
+        </Pressable>
         
         <View style={styles.headerCenter}>
           <Dog size={24} color="#0ea5e9" strokeWidth={2} />
@@ -166,55 +164,6 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.mainContent}>
-        {desktopMode && (
-          <View style={styles.desktopSidebar}>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={styles.sidebarSection}>
-                <Text style={styles.sidebarTitle}>Zeitraum</Text>
-                <View style={styles.yearGrid}>
-                  {availableYears.map(year => (
-                    <Pressable
-                      key={year}
-                      onPress={() => setSelectedYear(year)}
-                      style={[
-                        styles.yearOption,
-                        selectedYear === year && styles.yearOptionActive
-                      ]}
-                    >
-                      <Text style={[
-                        styles.yearOptionText,
-                        selectedYear === year && styles.yearOptionTextActive
-                      ]}>
-                        {year}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-
-              <View style={styles.sidebarDivider} />
-
-              <View style={styles.sidebarSection}>
-                <Text style={styles.sidebarTitle}>Kategorien</Text>
-                {yearSummary && (
-                  <View style={styles.miniStats}>
-                    <View style={styles.miniStatItem}>
-                      <TrendingUp size={14} color="#22c55e" />
-                      <Text style={styles.miniStatLabel}>Einnahmen</Text>
-                      <Text style={styles.miniStatValue}>{yearSummary.totalIncome.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}</Text>
-                    </View>
-                    <View style={styles.miniStatItem}>
-                      <TrendingDown size={14} color="#ef4444" />
-                      <Text style={styles.miniStatLabel}>Ausgaben</Text>
-                      <Text style={styles.miniStatValue}>{yearSummary.totalExpense.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}</Text>
-                    </View>
-                  </View>
-                )}
-              </View>
-            </ScrollView>
-          </View>
-        )}
-
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={[
@@ -230,12 +179,73 @@ export default function HomeScreen() {
             />
           }
         >
-          {/* Summary Header */}
-          {yearSummary && <SummaryHeader summary={yearSummary} />}
-
           <View style={desktopMode ? styles.desktopTwoColumn : null}>
-            {/* Transactions Section (Left on Desktop) */}
+            {/* Left Column: Transactions */}
             <View style={desktopMode ? styles.desktopTransactionsColumn : null}>
+              {/* Mobile: Summary Header and Categories (moved here) */}
+              {!desktopMode && yearSummary && (
+                <>
+                  <SummaryHeader summary={yearSummary} />
+                  <View style={styles.categoriesSection}>
+                    {/* Income Categories */}
+                    {yearSummary.incomeByCategory.length > 0 && (
+                      <View style={styles.categorySection}>
+                        <View style={styles.sectionHeader}>
+                          <TrendingUp size={18} color="#22c55e" />
+                          <Text style={styles.sectionTitle}>Einnahmen</Text>
+                        </View>
+                        <ScrollView 
+                          horizontal 
+                          showsHorizontalScrollIndicator={false}
+                          contentContainerStyle={styles.categoryScrollContent}
+                          style={styles.categoryScroll}
+                        >
+                          {yearSummary.incomeByCategory.map((cat) => (
+                            <CategoryCard
+                              key={cat.category}
+                              category={cat.category}
+                              total={cat.total}
+                              count={cat.count}
+                              percentage={cat.percentage}
+                              type="income"
+                            />
+                          ))}
+                        </ScrollView>
+                        <CategoryBar data={yearSummary.incomeByCategory} height={6} />
+                      </View>
+                    )}
+
+                    {/* Expense Categories */}
+                    {yearSummary.expenseByCategory.length > 0 && (
+                      <View style={styles.categorySection}>
+                        <View style={styles.sectionHeader}>
+                          <TrendingDown size={18} color="#ef4444" />
+                          <Text style={styles.sectionTitle}>Ausgaben</Text>
+                        </View>
+                        <ScrollView 
+                          horizontal 
+                          showsHorizontalScrollIndicator={false}
+                          contentContainerStyle={styles.categoryScrollContent}
+                          style={styles.categoryScroll}
+                        >
+                          {yearSummary.expenseByCategory.map((cat) => (
+                            <CategoryCard
+                              key={cat.category}
+                              category={cat.category}
+                              total={cat.total}
+                              count={cat.count}
+                              percentage={cat.percentage}
+                              type="expense"
+                            />
+                          ))}
+                        </ScrollView>
+                        <CategoryBar data={yearSummary.expenseByCategory} height={6} />
+                      </View>
+                    )}
+                  </View>
+                </>
+              )}
+
               {/* Transaction Tabs */}
               <View style={styles.tabsContainer}>
                 <Pressable
@@ -369,75 +379,78 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            {/* Category Cards Section (Right on Desktop) */}
-            <View style={desktopMode ? styles.desktopCategoriesColumn : null}>
-              {yearSummary && (
-                <View style={[styles.categoriesSection, desktopMode && styles.desktopCategoriesFixed]}>
-                  {/* Income Categories */}
-                  {yearSummary.incomeByCategory.length > 0 && (
-                    <View style={styles.categorySection}>
-                      <View style={styles.sectionHeader}>
-                        <TrendingUp size={18} color="#22c55e" />
-                        <Text style={styles.sectionTitle}>Einnahmen</Text>
-                      </View>
-                      <View style={[styles.categoryGrid, desktopMode && styles.desktopCategoryGrid]}>
-                        {yearSummary.incomeByCategory.map((cat) => (
-                          <CategoryCard
-                            key={cat.category}
-                            category={cat.category}
-                            total={cat.total}
-                            count={cat.count}
-                            percentage={cat.percentage}
-                            type="income"
-                          />
-                        ))}
-                      </View>
-                      <CategoryBar data={yearSummary.incomeByCategory} height={6} />
-                    </View>
-                  )}
+            {/* Right Column: Summary and Categories */}
+            {desktopMode && yearSummary && (
+              <View style={styles.desktopCategoriesColumn}>
+                <View style={styles.desktopCategoriesFixed}>
+                  {/* Desktop: Summary Header moved here */}
+                  <SummaryHeader summary={yearSummary} />
 
-                  {/* Expense Categories */}
-                  {yearSummary.expenseByCategory.length > 0 && (
-                    <View style={[styles.categorySection, { marginTop: 24 }]}>
-                      <View style={styles.sectionHeader}>
-                        <TrendingDown size={18} color="#ef4444" />
-                        <Text style={styles.sectionTitle}>Ausgaben</Text>
+                  <View style={styles.categoriesSection}>
+                    {/* Income Categories */}
+                    {yearSummary.incomeByCategory.length > 0 && (
+                      <View style={styles.categorySection}>
+                        <View style={styles.sectionHeader}>
+                          <TrendingUp size={18} color="#22c55e" />
+                          <Text style={styles.sectionTitle}>Einnahmen</Text>
+                        </View>
+                        <View style={styles.desktopCategoryGrid}>
+                          {yearSummary.incomeByCategory.map((cat) => (
+                            <CategoryCard
+                              key={cat.category}
+                              category={cat.category}
+                              total={cat.total}
+                              count={cat.count}
+                              percentage={cat.percentage}
+                              type="income"
+                            />
+                          ))}
+                        </View>
+                        <CategoryBar data={yearSummary.incomeByCategory} height={6} />
                       </View>
-                      <View style={[styles.categoryGrid, desktopMode && styles.desktopCategoryGrid]}>
-                        {yearSummary.expenseByCategory.map((cat) => (
-                          <CategoryCard
-                            key={cat.category}
-                            category={cat.category}
-                            total={cat.total}
-                            count={cat.count}
-                            percentage={cat.percentage}
-                            type="expense"
-                          />
-                        ))}
+                    )}
+
+                    {/* Expense Categories */}
+                    {yearSummary.expenseByCategory.length > 0 && (
+                      <View style={[styles.categorySection, { marginTop: 24 }]}>
+                        <View style={styles.sectionHeader}>
+                          <TrendingDown size={18} color="#ef4444" />
+                          <Text style={styles.sectionTitle}>Ausgaben</Text>
+                        </View>
+                        <View style={styles.desktopCategoryGrid}>
+                          {yearSummary.expenseByCategory.map((cat) => (
+                            <CategoryCard
+                              key={cat.category}
+                              category={cat.category}
+                              total={cat.total}
+                              count={cat.count}
+                              percentage={cat.percentage}
+                              type="expense"
+                            />
+                          ))}
+                        </View>
+                        <CategoryBar data={yearSummary.expenseByCategory} height={6} />
                       </View>
-                      <CategoryBar data={yearSummary.expenseByCategory} height={6} />
-                    </View>
-                  )}
+                    )}
+                  </View>
                 </View>
-              )}
-            </View>
+              </View>
+            )}
           </View>
         </ScrollView>
       </View>
 
-      {/* Side Menu (Only for Mobile) */}
-      {!desktopMode && (
-        <SideMenu
-          isOpen={isSideMenuOpen}
-          onClose={() => setSideMenuOpen(false)}
-          selectedYear={selectedYear}
-          availableYears={availableYears}
-          onYearSelect={setSelectedYear}
-          onReloadData={loadMockData}
-          onOpenReview={() => setIsReviewOpen(true)}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-        />
-      )}
+      {/* Side Menu (Mobile and Desktop Drawer) */}
+      <SideMenu
+        isOpen={isSideMenuOpen}
+        onClose={() => setSideMenuOpen(false)}
+        selectedYear={selectedYear}
+        availableYears={availableYears}
+        onYearSelect={setSelectedYear}
+        onReloadData={loadMockData}
+        onOpenReview={() => setIsReviewOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+      />
 
       {/* AI Review Modal */}
       <ReviewModal
