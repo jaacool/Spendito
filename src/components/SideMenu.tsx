@@ -11,6 +11,7 @@ interface SideMenuProps {
   onReloadData: () => void;
   onOpenReview: () => void;
   onOpenSettings: () => void;
+  isDesktopSidebar?: boolean;
 }
 
 export function SideMenu({ 
@@ -22,7 +23,107 @@ export function SideMenu({
   onReloadData,
   onOpenReview,
   onOpenSettings,
+  isDesktopSidebar = false,
 }: SideMenuProps) {
+  // Desktop Sidebar - render without Modal
+  if (isDesktopSidebar) {
+    return (
+      <View style={styles.desktopSidebar}>
+        {/* Header */}
+        <View style={styles.desktopHeader}>
+          <View style={styles.logoContainer}>
+            <Dog size={28} color="#0ea5e9" strokeWidth={2} />
+          </View>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>Spendito</Text>
+            <Text style={styles.subtitle}>Hunde-Rettungsverein</Text>
+          </View>
+        </View>
+
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          {/* Year Selection */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Calendar size={18} color="#6b7280" />
+              <Text style={styles.sectionTitle}>Jahr auswählen</Text>
+            </View>
+            
+            {availableYears.map((year) => (
+              <Pressable
+                key={year}
+                style={[
+                  styles.yearItem,
+                  year === selectedYear && styles.yearItemSelected,
+                ]}
+                onPress={() => onYearSelect(year)}
+              >
+                <Text style={[
+                  styles.yearText,
+                  year === selectedYear && styles.yearTextSelected,
+                ]}>
+                  {year}
+                </Text>
+                {year === selectedYear && (
+                  <View style={styles.selectedIndicator} />
+                )}
+                <ChevronRight 
+                  size={18} 
+                  color={year === selectedYear ? '#0ea5e9' : '#d1d5db'} 
+                />
+              </Pressable>
+            ))}
+          </View>
+
+          {/* Actions */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Settings size={18} color="#6b7280" />
+              <Text style={styles.sectionTitle}>Aktionen</Text>
+            </View>
+            
+            <Pressable
+              style={[styles.actionItem, styles.reviewAction]}
+              onPress={onOpenReview}
+            >
+              <Sparkles size={20} color="#8b5cf6" />
+              <Text style={[styles.actionText, { color: '#8b5cf6' }]}>KI-Überprüfung starten</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.actionItem}
+              onPress={onOpenSettings}
+            >
+              <SlidersHorizontal size={20} color="#6b7280" />
+              <Text style={styles.actionText}>Einstellungen</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.actionItem}
+              onPress={onReloadData}
+            >
+              <RefreshCw size={20} color="#6b7280" />
+              <Text style={styles.actionText}>Demo-Daten neu laden</Text>
+            </Pressable>
+          </View>
+
+          {/* Info */}
+          <View style={styles.infoSection}>
+            <Text style={styles.infoText}>
+              Tippe auf eine Transaktion, um die Kategorie zu ändern. 
+              Die App lernt aus deinen Korrekturen.
+            </Text>
+          </View>
+        </ScrollView>
+
+        {/* Footer */}
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Version 1.0.0</Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Mobile - render as Modal
   return (
     <Modal
       visible={isOpen}
@@ -166,6 +267,20 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 20,
     elevation: 10,
+  },
+  desktopSidebar: {
+    width: 280,
+    backgroundColor: '#ffffff',
+    borderRightWidth: 1,
+    borderRightColor: '#f3f4f6',
+  },
+  desktopHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 20,
+    paddingTop: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
   },
   header: {
     flexDirection: 'row',
