@@ -614,16 +614,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <Text style={styles.sectionTitle}>Datensicherung</Text>
                 </View>
 
-                <View style={styles.connectionCard}>
-                  <View style={styles.connectionInfo}>
-                    <View style={[styles.connectionIcon, { backgroundColor: '#6366f115' }]}>
-                      <Share2 size={18} color="#6366f1" />
-                    </View>
-                    <View style={styles.connectionDetails}>
-                      <Text style={styles.connectionName}>Backup & Restore</Text>
-                    </View>
-                  </View>
-                  <View style={styles.backupButtons}>
+                <View style={styles.backupButtonsContainer}>
                     <TouchableOpacity 
                       style={[styles.connectButton, { backgroundColor: '#6366f115', marginRight: 8, cursor: 'pointer' } as any]}
                       onPress={handleExportBackup}
@@ -642,7 +633,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <Upload size={12} color="#6366f1" />
                       <Text style={[styles.connectButtonText, { color: '#6366f1' }]}>Import</Text>
                     </TouchableOpacity>
-                  </View>
                 </View>
               </View>
 
@@ -1404,6 +1394,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  backupButtonsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   syncCard: {
     backgroundColor: '#f9fafb',
