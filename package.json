@@ -1,6 +1,8 @@
 {
   "name": "spendito",
   "version": "1.0.0",
+  "author": "Spendito Team",
+  "description": "Spendito - Deine Finanzen im Griff",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
@@ -8,12 +10,17 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "electron": "electron .",
-    "build:web": "expo export:web",
-    "build:windows": "npm run build:web && electron-builder --win"
+    "build:web": "expo export",
+    "build:windows": "npm run build:web && electron-builder --win",
+    "build:macos": "npm run build:web && electron-builder --mac",
+    "build:all": "npm run build:web && electron-builder --win --mac"
   },
   "build": {
     "appId": "com.spendito.app",
     "productName": "Spendito",
+    "extraMetadata": {
+      "main": "electron-main.js"
+    },
     "directories": {
       "output": "release"
     },
@@ -26,6 +33,14 @@
     "win": {
       "target": "portable",
       "icon": "assets/icon.png"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "assets/icon.png",
+      "category": "public.app-category.finance"
     }
   },
   "dependencies": {
@@ -34,8 +49,11 @@
     "date-fns": "^4.1.0",
     "expo": "~54.0.25",
     "expo-constants": "~18.0.10",
+    "expo-document-picker": "^14.0.8",
+    "expo-file-system": "^19.0.21",
     "expo-linking": "~8.0.9",
     "expo-router": "~6.0.15",
+    "expo-sharing": "^14.0.8",
     "expo-status-bar": "~3.0.8",
     "lucide-react-native": "^0.555.0",
     "nativewind": "^4.2.1",

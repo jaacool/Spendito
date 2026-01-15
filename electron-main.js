@@ -25,6 +25,7 @@ function createWindow() {
   }
 }
 
+// Ensure the dist directory exists before creating the window
 app.whenReady().then(() => {
   createWindow();
 

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Modal, Pressable, ActivityIndicator, ScrollView, TextInput, Alert, Linking, TouchableOpacity, Platform } from 'react-native';
-import { X, Type, Minus, Circle, Plus, Building2, Wallet, Link, Unlink, CheckCircle2, RefreshCw, Eye, EyeOff, ExternalLink, Trash2, Upload, FileText } from 'lucide-react-native';
+import { X, Type, Minus, Circle, Plus, Building2, Wallet, Link, Unlink, CheckCircle2, RefreshCw, Eye, EyeOff, ExternalLink, Trash2, Upload, FileText, Download, Share2 } from 'lucide-react-native';
 import { useSettings, UIScale } from '../context/SettingsContext';
 import { backendApiService } from '../services/backendApi';
 import { storageService } from '../services/storage';
 import { categorizationService } from '../services/categorization';
 import { csvImportService } from '../services/csvImport';
+import { backupService } from '../services/backup';
 import Constants from 'expo-constants';
 
 import { useApp } from '../context/AppContext';
@@ -39,6 +40,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [paypalStatus, setPaypalStatus] = useState<PayPalStatus | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isPaypalLoading, setIsPaypalLoading] = useState(false);
+  const [isBackupLoading, setIsBackupLoading] = useState(false);
   const [showBankForm, setShowBankForm] = useState(false);
   const [showPin, setShowPin] = useState(false);
   
@@ -536,6 +538,35 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
+  const handleExportBackup = async () => {
+    setIsBackupLoading(true);
+    try {
+      await backupService.exportData();
+    } catch (error: any) {
+      Alert.alert('Export fehlgeschlagen', error.message);
+    } finally {
+      setIsBackupLoading(false);
+    }
+  };
+
+  const handleImportBackup = async () => {
+    setIsBackupLoading(true);
+    try {
+      const result = await backupService.importData();
+      if (result.success) {
+        Alert.alert('Import erfolgreich', result.message, [
+          { text: 'OK', onPress: () => refreshData() }
+        ]);
+      } else {
+        Alert.alert('Import', result.message);
+      }
+    } catch (error: any) {
+      Alert.alert('Import fehlgeschlagen', error.message);
+    } finally {
+      setIsBackupLoading(false);
+    }
+  };
+
   const appVersion = Constants.expoConfig?.version || '1.0.0';
 
   return (
@@ -556,7 +587,47 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </View>
 
           <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            {/* Bank Connections Section */}
+              {/* Backup & Restore Section */}
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Download size={16} color="#6b7280" />
+                  <Text style={styles.sectionTitle}>Datensicherung</Text>
+                </View>
+
+                <View style={styles.connectionCard}>
+                  <View style={styles.connectionInfo}>
+                    <View style={[styles.connectionIcon, { backgroundColor: '#6366f115' }]}>
+                      <Share2 size={18} color="#6366f1" />
+                    </View>
+                    <View style={styles.connectionDetails}>
+                      <Text style={styles.connectionName}>Backup & Restore</Text>
+                      <Text style={styles.disconnectedText}>Daten exportieren oder wiederherstellen</Text>
+                    </View>
+                  </View>
+                  <View style={styles.paypalButtons}>
+                    <TouchableOpacity 
+                      style={[styles.connectButton, { backgroundColor: '#6366f115', marginRight: 8, cursor: 'pointer' } as any]}
+                      onPress={handleExportBackup}
+                      activeOpacity={0.7}
+                      disabled={isBackupLoading}
+                    >
+                      <Download size={12} color="#6366f1" />
+                      <Text style={[styles.connectButtonText, { color: '#6366f1' }]}>Export</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.connectButton, { backgroundColor: '#6366f115', cursor: 'pointer' } as any]}
+                      onPress={handleImportBackup}
+                      activeOpacity={0.7}
+                      disabled={isBackupLoading}
+                    >
+                      <Upload size={12} color="#6366f1" />
+                      <Text style={[styles.connectButtonText, { color: '#6366f1' }]}>Import</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+
+              {/* Bank Connections Section */}
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Link size={16} color="#6b7280" />
