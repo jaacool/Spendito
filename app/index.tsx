@@ -125,45 +125,28 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        {!desktopMode && (
+      {/* Header - Only on Mobile */}
+      {!desktopMode && (
+        <View style={styles.header}>
           <Pressable 
             onPress={() => setSideMenuOpen(true)}
             style={styles.menuButton}
           >
             <Menu size={24} color="#1f2937" />
           </Pressable>
-        )}
-        
-        <View style={styles.headerCenter}>
-          <Dog size={24} color="#0ea5e9" strokeWidth={2} />
-          <Text style={styles.headerTitle}>Spendito</Text>
-        </View>
-        
-        <View style={styles.headerRight}>
-          <View style={styles.yearBadge}>
-            <Text style={styles.yearText}>{selectedYear}</Text>
+          
+          <View style={styles.headerCenter}>
+            <Dog size={24} color="#0ea5e9" strokeWidth={2} />
+            <Text style={styles.headerTitle}>Spendito</Text>
           </View>
           
-          {desktopMode && (
-            <View style={styles.desktopActions}>
-              <Pressable 
-                onPress={() => setIsReviewOpen(true)}
-                style={styles.iconButton}
-              >
-                <BrainCircuit size={20} color="#0ea5e9" />
-              </Pressable>
-              <Pressable 
-                onPress={() => setIsSettingsOpen(true)}
-                style={styles.iconButton}
-              >
-                <Settings size={20} color="#6b7280" />
-              </Pressable>
+          <View style={styles.headerRight}>
+            <View style={styles.yearBadge}>
+              <Text style={styles.yearText}>{selectedYear}</Text>
             </View>
-          )}
+          </View>
         </View>
-      </View>
+      )}
 
       <View style={styles.mainContent}>
         {/* Desktop Sidebar - Same as Mobile SideMenu */}
@@ -823,11 +806,12 @@ const styles = StyleSheet.create({
   desktopCategoryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    marginHorizontal: -6, // Compensate for card padding
   },
   desktopCategoryCardWrapper: {
-    width: Platform.OS === 'web' ? 'calc(50% - 6px)' : '48%' as any,
-    minWidth: 200,
+    width: Platform.OS === 'web' ? '50%' : '50%' as any,
+    paddingHorizontal: 6,
+    marginBottom: 12,
   },
   categoriesSection: {
     // Container for all category sections
