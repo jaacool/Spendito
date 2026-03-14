@@ -5,7 +5,7 @@
  * to review and correct transaction categorizations on a quarterly basis.
  */
 
-import { Transaction, Category, CATEGORY_INFO, INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '../types';
+import { Transaction, Category, CATEGORY_INFO, INCOME_CATEGORIES, EXPENSE_CATEGORIES, TRANSFER_CATEGORIES } from '../types';
 import { categorizationService } from './categorization';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
@@ -52,7 +52,7 @@ class AIReviewService {
    * Generate the prompt for AI review
    */
   private generateReviewPrompt(transactions: Transaction[]): string {
-    const categoryList = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES]
+    const categoryList = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES, ...TRANSFER_CATEGORIES]
       .map(cat => `- ${cat}: ${CATEGORY_INFO[cat].labelDe}`)
       .join('\n');
 
