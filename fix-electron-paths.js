@@ -12,12 +12,18 @@ if (!fs.existsSync(indexPath)) {
 
 let html = fs.readFileSync(indexPath, 'utf8');
 
-// Replace absolute paths with relative paths
-// Expo generates paths like /_expo/static/... which don't work in Electron
+// Replace ALL absolute paths with relative paths
+// This includes _expo, node_modules, and any other absolute paths
 html = html.replace(/href="\/_expo\//g, 'href="./_expo/');
 html = html.replace(/src="\/_expo\//g, 'src="./_expo/');
 html = html.replace(/href="\/favicon/g, 'href="./favicon');
 html = html.replace(/src="\/favicon/g, 'src="./favicon');
+html = html.replace(/href="\/node_modules\//g, 'href="./node_modules/');
+html = html.replace(/src="\/node_modules\//g, 'src="./node_modules/');
+
+// Fix any remaining absolute paths that start with /
+html = html.replace(/href="\/([^"]+)"/g, 'href="./$1"');
+html = html.replace(/src="\/([^"]+)"/g, 'src="./$1"');
 
 // Add base tag to ensure all relative paths work correctly
 if (!html.includes('<base')) {
@@ -27,5 +33,6 @@ if (!html.includes('<base')) {
 fs.writeFileSync(indexPath, html, 'utf8');
 
 console.log('✓ Paths fixed successfully!');
-console.log('  - Converted absolute paths to relative paths');
+console.log('  - Converted all absolute paths to relative paths');
+console.log('  - Fixed _expo, node_modules, and asset paths');
 console.log('  - Added base tag for proper path resolution');
