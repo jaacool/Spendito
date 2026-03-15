@@ -10,7 +10,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "electron": "electron .",
-    "build:web": "expo export",
+    "build:web": "expo export && node fix-electron-paths.js",
     "build:windows": "npm run build:web && electron-builder --win",
     "build:macos": "npm run build:web && electron-builder --mac",
     "build:all": "npm run build:web && electron-builder --win --mac"
