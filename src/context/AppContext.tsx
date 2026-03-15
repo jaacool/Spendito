@@ -13,10 +13,12 @@ interface AppContextType {
   yearSummary: YearSummary | null;
   isLoading: boolean;
   isSideMenuOpen: boolean;
+  selectedCategory: Category | null;
   
   // Actions
   setSelectedYear: (year: number) => void;
   setSideMenuOpen: (open: boolean) => void;
+  setSelectedCategory: (category: Category | null) => void;
   updateTransactionCategory: (id: string, category: Category) => Promise<void>;
   confirmTransaction: (id: string) => Promise<void>;
   refreshData: () => Promise<void>;
@@ -32,6 +34,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [yearSummary, setYearSummary] = useState<YearSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSideMenuOpen, setSideMenuOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
 
   // Initialize services and load data
   useEffect(() => {
@@ -187,8 +190,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         yearSummary,
         isLoading,
         isSideMenuOpen,
+        selectedCategory,
         setSelectedYear,
         setSideMenuOpen,
+        setSelectedCategory,
         updateTransactionCategory,
         confirmTransaction,
         refreshData,

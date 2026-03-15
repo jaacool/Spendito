@@ -24,7 +24,7 @@ import {
   CategoryBar,
   SettingsModal,
 } from '../src/components';
-import { Category, SourceAccount } from '../src/types';
+import { Category, SourceAccount, CATEGORY_INFO } from '../src/types';
 
 export default function HomeScreen() {
   const {
@@ -34,8 +34,10 @@ export default function HomeScreen() {
     yearSummary,
     isLoading,
     isSideMenuOpen,
+    selectedCategory,
     setSelectedYear,
     setSideMenuOpen,
+    setSelectedCategory,
     updateTransactionCategory,
     confirmTransaction,
     refreshData,
@@ -63,6 +65,9 @@ export default function HomeScreen() {
 
   const filteredTransactions = transactions
     .filter(t => {
+      // Filter by category
+      if (selectedCategory && t.category !== selectedCategory) return false;
+      
       // Filter by type
       if (activeTab !== 'all' && t.type !== activeTab) return false;
       // Filter by account (with fallback for old transactions)
@@ -303,6 +308,21 @@ export default function HomeScreen() {
                         {filteredTransactions.length} Buchungen
                       </Text>
                       
+                      {/* Category Filter Badge */}
+                      {selectedCategory && (
+                        <View style={styles.categoryFilterBadge}>
+                          <Text style={styles.categoryFilterText}>
+                            Gefiltert nach: {CATEGORY_INFO[selectedCategory]?.labelDe || selectedCategory}
+                          </Text>
+                          <Pressable 
+                            onPress={() => setSelectedCategory(null)}
+                            style={styles.categoryFilterClose}
+                          >
+                            <X size={14} color="#6b7280" />
+                          </Pressable>
+                        </View>
+                      )}
+                      
                       <View style={styles.transactionsList}>
                         {filteredTransactions.map((transaction) => (
                           <TransactionItem
@@ -346,6 +366,7 @@ export default function HomeScreen() {
                                     count={cat.count}
                                     percentage={cat.percentage}
                                     type="income"
+                                    onPress={() => setSelectedCategory(selectedCategory === cat.category ? null : cat.category)}
                                   />
                                 </View>
                               ))}
@@ -370,6 +391,7 @@ export default function HomeScreen() {
                                     count={cat.count}
                                     percentage={cat.percentage}
                                     type="expense"
+                                    onPress={() => setSelectedCategory(selectedCategory === cat.category ? null : cat.category)}
                                   />
                                 </View>
                               ))}
@@ -423,6 +445,7 @@ export default function HomeScreen() {
                           count={cat.count}
                           percentage={cat.percentage}
                           type="income"
+                          onPress={() => setSelectedCategory(selectedCategory === cat.category ? null : cat.category)}
                         />
                       ))}
                     </ScrollView>
@@ -450,6 +473,7 @@ export default function HomeScreen() {
                           count={cat.count}
                           percentage={cat.percentage}
                           type="expense"
+                          onPress={() => setSelectedCategory(selectedCategory === cat.category ? null : cat.category)}
                         />
                       ))}
                     </ScrollView>
@@ -579,6 +603,21 @@ export default function HomeScreen() {
                 <Text style={styles.transactionsTitle}>
                   {filteredTransactions.length} Buchungen
                 </Text>
+                
+                {/* Category Filter Badge */}
+                {selectedCategory && (
+                  <View style={styles.categoryFilterBadge}>
+                    <Text style={styles.categoryFilterText}>
+                      Gefiltert nach: {CATEGORY_INFO[selectedCategory]?.labelDe || selectedCategory}
+                    </Text>
+                    <Pressable 
+                      onPress={() => setSelectedCategory(null)}
+                      style={styles.categoryFilterClose}
+                    >
+                      <X size={14} color="#6b7280" />
+                    </Pressable>
+                  </View>
+                )}
                 
                 <View style={styles.transactionsList}>
                   {filteredTransactions.map((transaction) => (
@@ -999,14 +1038,28 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  categoryFilterBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f3f4f6',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 12,
+    gap: 8,
+  },
+  categoryFilterText: {
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '500',
+    flex: 1,
+  },
+  categoryFilterClose: {
+    padding: 4,
+    borderRadius: 4,
+    backgroundColor: '#e5e7eb',
+  },
   transactionsList: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    gap: 8,
   },
 });
