@@ -215,9 +215,14 @@ export function ReviewModal({ isOpen, onClose, onApplyChange, selectedYear, avai
                     return (
                       <View key={result.transactionId} style={styles.suggestionCard}>
                         <View style={styles.suggestionHeader}>
-                          <Text style={styles.suggestionDescription} numberOfLines={1}>
-                            {transaction.description}
-                          </Text>
+                          <View style={styles.suggestionTextContainer}>
+                            <Text style={styles.suggestionDescription} numberOfLines={1}>
+                              {transaction.description}
+                            </Text>
+                            <Text style={styles.suggestionCounterparty} numberOfLines={1}>
+                              {transaction.counterparty}
+                            </Text>
+                          </View>
                           <Text style={[
                             styles.suggestionAmount,
                             transaction.amount < 0 && styles.expenseAmount
@@ -414,12 +419,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  suggestionDescription: {
+  suggestionTextContainer: {
     flex: 1,
+    marginRight: 12,
+  },
+  suggestionDescription: {
     fontSize: 15,
     fontWeight: '500',
     color: '#1f2937',
-    marginRight: 12,
+  },
+  suggestionCounterparty: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginTop: 2,
   },
   suggestionAmount: {
     fontSize: 15,
