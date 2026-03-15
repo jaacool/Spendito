@@ -20,8 +20,7 @@ interface PayPalToken {
   refresh_token?: string;
 }
 
-// Store user tokens in memory (loaded from DB)
-const userTokens: Map<string, PayPalToken> = new Map();
+// No token storage - tokens are managed client-side
 
 /**
  * Exchange authorization code for user access token
@@ -78,39 +77,7 @@ async function refreshUserToken(refreshToken: string): Promise<PayPalToken> {
   };
 }
 
-/**
- * Get valid user token (refresh if needed)
- */
-async function getUserToken(userId: string): Promise<string | null> {
-  const token = userTokens.get(userId);
-  if (!token) return null;
-
-  // Check if token is expired
-  if (token.expires_at && Date.now() >= token.expires_at) {
-    if (token.refresh_token) {
-      try {
-        const newToken = await refreshUserToken(token.refresh_token);
-        userTokens.set(userId, newToken);
-        
-        // Update in database
-        db.prepare(`
-          UPDATE bank_connections 
-          SET banking_info = ? 
-          WHERE user_id = ? AND bank_id = 'paypal'
-        `).run(JSON.stringify(newToken), userId);
-        
-        return newToken.access_token;
-      } catch (err) {
-        console.error('[PayPal] Token refresh failed:', err);
-        userTokens.delete(userId);
-        return null;
-      }
-    }
-    return null;
-  }
-
-  return token.access_token;
-}
+// Token management moved to client-side
 
 /**
  * Fetch transactions from PayPal using user's token
@@ -174,31 +141,7 @@ async function fetchUserTransactions(
   return allTransactions;
 }
 
-/**
- * Load user tokens from database on startup
- */
-function loadUserTokens() {
-  try {
-    const connections = db.prepare(`
-      SELECT user_id, banking_info FROM bank_connections WHERE bank_id = 'paypal'
-    `).all() as any[];
-
-    for (const conn of connections) {
-      if (conn.banking_info) {
-        try {
-          const token = JSON.parse(conn.banking_info);
-          userTokens.set(conn.user_id, token);
-        } catch {}
-      }
-    }
-    console.log(`[PayPal] Loaded ${userTokens.size} user tokens`);
-  } catch (err) {
-    console.error('[PayPal] Failed to load tokens:', err);
-  }
-}
-
-// Load tokens on module init
-loadUserTokens();
+// No server-side token loading - client manages tokens
 
 // ============================================
 // PayPal Routes
@@ -249,27 +192,7 @@ router.get('/callback', async (req, res) => {
     const redirectUri = `${BACKEND_URL}/api/paypal/callback`;
     const token = await exchangeCodeForToken(code as string, redirectUri);
     
-    // Store token in memory
-    userTokens.set(userId as string, token);
-
-    // Store/update connection in database
-    const existingConnection = db.prepare(`
-      SELECT id FROM bank_connections WHERE user_id = ? AND bank_id = 'paypal'
-    `).get(userId) as any;
-
-    if (existingConnection) {
-      db.prepare(`
-        UPDATE bank_connections 
-        SET banking_info = ?, last_sync = datetime('now')
-        WHERE id = ?
-      `).run(JSON.stringify(token), existingConnection.id);
-    } else {
-      const connectionId = uuidv4();
-      db.prepare(`
-        INSERT INTO bank_connections (id, user_id, bank_id, bank_name, bank_url, login_name, banking_info)
-        VALUES (?, ?, 'paypal', 'PayPal', 'https://api.paypal.com', 'oauth', ?)
-      `).run(connectionId, userId, JSON.stringify(token));
-    }
+    // Token is returned to client, not stored server-side
 
     // Redirect to success page or deep link back to app
     res.send(`
@@ -292,9 +215,12 @@ router.get('/callback', async (req, res) => {
             <a href="spendito://paypal-success" id="app-link" style="display: none; font-size: 14px; color: #0070ba;">Zurück zur App (Mobile)</a>
           </div>
           <script>
-            // For Web/Vercel: Try to notify the opener window
+            // For Web/Vercel: Send token to opener window
             if (window.opener) {
-              window.opener.postMessage({ type: 'PAYPAL_CONNECTED' }, '*');
+              window.opener.postMessage({ 
+                type: 'PAYPAL_CONNECTED',
+                token: ${JSON.stringify(token)}
+              }, '*');
             }
             
             // For Mobile: Try deep links
@@ -324,77 +250,60 @@ router.get('/callback', async (req, res) => {
 });
 
 /**
- * Check PayPal connection status for a user
+ * Check PayPal API configuration (not connection status - that's client-side)
  */
 router.get('/status/:userId', async (req, res) => {
   try {
     if (!PAYPAL_CLIENT_ID || !PAYPAL_CLIENT_SECRET) {
       return res.json({ 
-        configured: false, 
-        connected: false,
+        configured: false,
         message: 'PayPal API nicht konfiguriert' 
       });
     }
-
-    const { userId } = req.params;
-    
-    // Check if user has a valid token
-    const token = await getUserToken(userId);
-    const connection = db.prepare(`
-      SELECT * FROM bank_connections 
-      WHERE user_id = ? AND bank_id = 'paypal'
-    `).get(userId) as any;
     
     res.json({ 
-      configured: true, 
-      connected: !!token,
-      lastSync: connection?.last_sync || null,
-      message: token ? 'PayPal verbunden' : 'Nicht verbunden'
+      configured: true,
+      message: 'PayPal API konfiguriert'
     });
   } catch (error: any) {
     res.json({ 
-      configured: true, 
-      connected: false, 
+      configured: false,
       message: error.message 
     });
   }
 });
 
 /**
- * Get stored PayPal transactions for a user
+ * Refresh user token using refresh_token
  */
-router.get('/transactions/:userId', (req, res) => {
+router.post('/refresh-token', async (req, res) => {
   try {
-    const { userId } = req.params;
+    const { refreshToken } = req.body;
     
-    const transactions = db.prepare(`
-      SELECT t.* 
-      FROM transactions t
-      JOIN bank_accounts ba ON t.account_id = ba.id
-      JOIN bank_connections bc ON ba.connection_id = bc.id
-      WHERE bc.user_id = ? AND bc.bank_id = 'paypal'
-      ORDER BY t.date DESC
-    `).all(userId);
+    if (!refreshToken) {
+      return res.status(400).json({ error: 'Refresh token required' });
+    }
 
-    res.json(transactions);
+    const newToken = await refreshUserToken(refreshToken);
+    res.json(newToken);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    console.error('[PayPal] Token refresh error:', error);
+    res.status(401).json({ error: error.message });
   }
 });
 
 /**
- * Sync PayPal transactions for a user
+ * Sync PayPal transactions - client sends token
  */
 router.post('/sync/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
-    const { startDate, endDate } = req.body;
+    const { startDate, endDate, accessToken } = req.body;
 
-    // Get user's access token
-    const accessToken = await getUserToken(userId);
+    // Client must provide access token
     if (!accessToken) {
       return res.status(401).json({ 
-        error: 'PayPal nicht verbunden. Bitte zuerst anmelden.',
+        error: 'Kein Access Token bereitgestellt',
         needsAuth: true 
       });
     }
@@ -561,16 +470,13 @@ router.post('/sync/:userId', async (req, res) => {
 });
 
 /**
- * Disconnect PayPal
+ * Disconnect PayPal - delete transactions only
  */
 router.delete('/disconnect/:userId', (req, res) => {
   try {
     const { userId } = req.params;
     
-    // Remove from memory
-    userTokens.delete(userId);
-
-    // Remove from database
+    // Token is client-side, just remove DB data
     const connection = db.prepare(`
       SELECT id FROM bank_connections WHERE user_id = ? AND bank_id = 'paypal'
     `).get(userId) as any;

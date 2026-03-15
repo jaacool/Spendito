@@ -7,6 +7,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Transaction } from '../types';
 import { categorizationService } from './categorization';
+import { paypalAuthService } from './paypalAuth';
 
 // Backend URL
 const BACKEND_URL = 'https://spendito-production.up.railway.app';
@@ -317,7 +318,7 @@ class BackendApiService {
   }
 
   // ============================================
-  // PayPal Methods
+  // PayPal Methods - Delegated to paypalAuth Service
   // ============================================
 
   /**
@@ -325,61 +326,39 @@ class BackendApiService {
    */
   async getPayPalStatus(): Promise<{ configured: boolean; connected: boolean; message?: string }> {
     try {
-      await this.initialize();
+      const connected = await paypalAuthService.isConnected();
       const response = await fetch(`${BACKEND_URL}/api/paypal/status/${this.userId}`);
-      return response.json();
+      const data = await response.json();
+      
+      return {
+        configured: data.configured,
+        connected,
+        message: connected ? 'PayPal verbunden' : 'Nicht verbunden'
+      };
     } catch {
       return { configured: false, connected: false };
     }
   }
 
   /**
-   * Get PayPal OAuth login URL
+   * Connect PayPal (OAuth flow)
    */
-  async getPayPalAuthUrl(): Promise<string> {
-    await this.initialize();
-    
-    const response = await fetch(`${BACKEND_URL}/api/paypal/auth-url/${this.userId}`);
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to get PayPal auth URL');
-    }
-    
-    return data.authUrl;
+  async connectPayPal(): Promise<void> {
+    return paypalAuthService.connectPayPal();
   }
 
   /**
    * Sync PayPal transactions
    */
   async syncPayPal(startDate?: string, endDate?: string): Promise<{ success: boolean; transactionsFound: number; transactionsAdded: number; needsAuth?: boolean; error?: string }> {
-    await this.initialize();
-
-    console.log(`[PayPal] Starting sync for user ${this.userId}`);
-    const response = await fetch(`${BACKEND_URL}/api/paypal/sync/${this.userId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ startDate, endDate }),
-    });
-
-    const text = await response.text();
-    console.log(`[PayPal] Raw sync response:`, text);
-    
-    let data;
     try {
-      data = JSON.parse(text);
-    } catch (e) {
-      throw new Error(`Ungültige Server-Antwort: ${text.substring(0, 100)}`);
-    }
-
-    if (!response.ok) {
-      if (data.needsAuth) {
+      return await paypalAuthService.syncTransactions(startDate, endDate);
+    } catch (error: any) {
+      if (error.message.includes('nicht verbunden') || error.message.includes('neu anmelden')) {
         return { success: false, transactionsFound: 0, transactionsAdded: 0, needsAuth: true };
       }
-      throw new Error(data.error || 'PayPal sync failed');
+      throw error;
     }
-
-    return data;
   }
 
   /**
@@ -440,15 +419,7 @@ class BackendApiService {
    * Disconnect PayPal
    */
   async disconnectPayPal(): Promise<void> {
-    await this.initialize();
-    
-    try {
-      await fetch(`${BACKEND_URL}/api/paypal/disconnect/${this.userId}`, {
-        method: 'DELETE',
-      });
-    } catch {
-      // Ignore errors
-    }
+    return paypalAuthService.disconnect();
   }
 }
 
