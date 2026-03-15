@@ -1,6 +1,12 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const isDev = !app.isPackaged;
+
+console.log('App starting...');
+console.log('isDev:', isDev);
+console.log('__dirname:', __dirname);
+console.log('app.isPackaged:', app.isPackaged);
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -15,14 +21,40 @@ function createWindow() {
     autoHideMenuBar: true,
   });
 
+  // Always open DevTools for debugging
+  win.webContents.openDevTools();
+
   if (isDev) {
     // During development, load from the expo dev server
-    win.loadURL('http://localhost:8081');
-    // win.webContents.openDevTools();
+    console.log('Loading dev server...');
+    win.loadURL('http://localhost:8081').catch(err => {
+      console.error('Failed to load dev server:', err);
+    });
   } else {
     // In production, load the built files
-    win.loadFile(path.join(__dirname, 'dist/index.html'));
+    const indexPath = path.join(__dirname, 'dist', 'index.html');
+    console.log('Loading production build from:', indexPath);
+    console.log('File exists:', fs.existsSync(indexPath));
+    
+    if (fs.existsSync(indexPath)) {
+      win.loadFile(indexPath).catch(err => {
+        console.error('Failed to load index.html:', err);
+      });
+    } else {
+      console.error('index.html not found at:', indexPath);
+      console.log('Directory contents:', fs.readdirSync(__dirname));
+    }
   }
+
+  // Log any console messages from the renderer
+  win.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    console.log(`Renderer: ${message}`);
+  });
+
+  // Log navigation errors
+  win.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('Failed to load:', errorCode, errorDescription);
+  });
 }
 
 // Ensure the dist directory exists before creating the window
