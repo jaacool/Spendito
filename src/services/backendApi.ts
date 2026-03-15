@@ -226,7 +226,11 @@ class BackendApiService {
       const isIncome = tx.amount > 0;
       const { category, confidence } = tx.category 
         ? { category: tx.category as any, confidence: 1 }
-        : categorizationService.categorize(tx.description || tx.counterparty_name || '', tx.amount);
+        : categorizationService.categorize(
+            tx.description || tx.counterparty_name || '', 
+            tx.amount,
+            tx.counterparty_name
+          );
 
       // Determine transaction type - transfers are a special type
       let txType: 'income' | 'expense' | 'transfer' = isIncome ? 'income' : 'expense';
@@ -402,7 +406,11 @@ class BackendApiService {
       const isIncome = tx.amount > 0;
       const { category, confidence } = tx.category 
         ? { category: tx.category as any, confidence: 1 }
-        : categorizationService.categorize(tx.description || tx.counterparty_name || '', tx.amount);
+        : categorizationService.categorize(
+            tx.description || tx.counterparty_name || '', 
+            tx.amount,
+            tx.counterparty_name
+          );
 
       // Determine transaction type - transfers are a special type
       let txType: 'income' | 'expense' | 'transfer' = isIncome ? 'income' : 'expense';

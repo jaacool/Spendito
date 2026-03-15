@@ -122,7 +122,7 @@ class BankApiService {
 
     return rawTransactions.map((raw, index) => {
       const isExpense = raw.amount < 0;
-      const { category, confidence } = categorizationService.categorize(raw.purpose, raw.amount);
+      const { category, confidence } = categorizationService.categorize(raw.purpose, raw.amount, raw.counterpartyName);
 
       return {
         id: `bank_${Date.now()}_${index}`,

@@ -106,11 +106,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         confidence: 1.0,
       });
       
-      // Learn from correction (including amount)
+      // Learn from correction (including amount and counterparty)
       await categorizationService.learnFromCorrection(
         transaction.description, 
         category, 
-        transaction.amount
+        transaction.amount,
+        transaction.counterparty
       );
       
       // Re-categorize all unconfirmed transactions based on updated rules
@@ -147,7 +148,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await categorizationService.learnFromCorrection(
         transaction.description, 
         transaction.category, 
-        transaction.amount
+        transaction.amount,
+        transaction.counterparty
       );
       
       // Refresh data

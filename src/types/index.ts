@@ -66,6 +66,7 @@ export interface DuplicateMatch {
 export interface CategoryRule {
   id: string;
   pattern: string; // Regex pattern to match description
+  counterpartyPattern?: string; // Regex pattern to match counterparty (sender/receiver)
   category: Category;
   priority: number; // Higher priority rules are checked first
   matchCount: number; // How many times this rule was used
@@ -73,6 +74,13 @@ export interface CategoryRule {
   isUserDefined: boolean;
   minAmount?: number; // Optional amount range for categorization
   maxAmount?: number;
+  // Dynamic amount learning
+  amountStats?: {
+    amounts: number[]; // Last N amounts that matched this rule
+    min: number; // Calculated min from amounts
+    max: number; // Calculated max from amounts
+    avg: number; // Average amount
+  };
 }
 
 export interface CategorySummary {

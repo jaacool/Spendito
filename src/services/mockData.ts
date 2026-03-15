@@ -58,7 +58,7 @@ export async function generateMockData(): Promise<Transaction[]> {
         const donor = donorNames[Math.floor(Math.random() * donorNames.length)];
         const description = `Spende für die Hunde`;
         
-        const { category, confidence } = categorizationService.categorize(description, amount);
+        const { category, confidence } = categorizationService.categorize(description, amount, donor);
         
         transactions.push(createTransaction(
           `vb_${year}_${month}_donation_${i}`,
@@ -81,9 +81,10 @@ export async function generateMockData(): Promise<Transaction[]> {
         const amount = [250, 300, 350, 400][Math.floor(Math.random() * 4)];
         const dogNames = ['Luna', 'Max', 'Bella', 'Rocky', 'Mia', 'Bruno', 'Emma', 'Leo'];
         const dogName = dogNames[Math.floor(Math.random() * dogNames.length)];
+        const adopter = donorNames[Math.floor(Math.random() * donorNames.length)];
         const description = `Schutzgebühr ${dogName}`;
         
-        const { category, confidence } = categorizationService.categorize(description, amount);
+        const { category, confidence } = categorizationService.categorize(description, amount, adopter);
         
         transactions.push(createTransaction(
           `vb_${year}_${month}_adoption_${i}`,
@@ -92,7 +93,7 @@ export async function generateMockData(): Promise<Transaction[]> {
           'income',
           category,
           description,
-          donorNames[Math.floor(Math.random() * donorNames.length)],
+          adopter,
           confidence,
           'volksbank'
         ));
@@ -103,9 +104,10 @@ export async function generateMockData(): Promise<Transaction[]> {
         const memberCount = 5 + Math.floor(Math.random() * 10);
         for (let i = 0; i < memberCount; i++) {
           const amount = [30, 50, 60][Math.floor(Math.random() * 3)];
+          const member = donorNames[Math.floor(Math.random() * donorNames.length)];
           const description = 'Mitgliedsbeitrag Quartal';
           
-          const { category, confidence } = categorizationService.categorize(description, amount);
+          const { category, confidence } = categorizationService.categorize(description, amount, member);
           
           transactions.push(createTransaction(
             `vb_${year}_${month}_member_${i}`,
@@ -114,7 +116,7 @@ export async function generateMockData(): Promise<Transaction[]> {
             'income',
             category,
             description,
-            donorNames[Math.floor(Math.random() * donorNames.length)],
+            member,
             confidence,
             'volksbank'
           ));
@@ -126,9 +128,11 @@ export async function generateMockData(): Promise<Transaction[]> {
       for (let i = 0; i < vetCountVB; i++) {
         const day = 1 + Math.floor(Math.random() * 28);
         const amount = -1 * [200, 350, 500, 800][Math.floor(Math.random() * 4)];
+        const vetNames = ['Tierarzt Müller', 'Veterinarian Clinic', 'Tierklinik Schmidt'];
+        const vet = vetNames[Math.floor(Math.random() * vetNames.length)];
         const description = 'Tierarzt Behandlung';
         
-        const { category, confidence } = categorizationService.categorize(description, amount);
+        const { category, confidence } = categorizationService.categorize(description, amount, vet);
         
         transactions.push(createTransaction(
           `vb_${year}_${month}_vet_${i}`,
@@ -137,7 +141,7 @@ export async function generateMockData(): Promise<Transaction[]> {
           'expense',
           category,
           description,
-          ['Tierklinik Nord', 'Dr. Tierlieb'][Math.floor(Math.random() * 2)],
+          vet,
           confidence,
           'volksbank'
         ));
@@ -148,9 +152,11 @@ export async function generateMockData(): Promise<Transaction[]> {
       for (let i = 0; i < fosterCount; i++) {
         const day = 1 + Math.floor(Math.random() * 5);
         const amount = -1 * [100, 150, 200][Math.floor(Math.random() * 3)];
+        const fosterNames = ['Familie Weber', 'Familie Schneider', 'Familie Fischer'];
+        const foster = fosterNames[Math.floor(Math.random() * fosterNames.length)];
         const description = 'Pflegestelle Aufwandsentschädigung';
         
-        const { category, confidence } = categorizationService.categorize(description, amount);
+        const { category, confidence } = categorizationService.categorize(description, amount, foster);
         
         transactions.push(createTransaction(
           `vb_${year}_${month}_foster_${i}`,
@@ -159,7 +165,7 @@ export async function generateMockData(): Promise<Transaction[]> {
           'expense',
           category,
           description,
-          donorNames[Math.floor(Math.random() * donorNames.length)],
+          foster,
           confidence,
           'volksbank'
         ));
@@ -169,8 +175,9 @@ export async function generateMockData(): Promise<Transaction[]> {
       const adminAmount = -1 * [20, 30, 50][Math.floor(Math.random() * 3)];
       const adminDescriptions = ['Porto Versand', 'Bankgebühren', 'Versicherung Verein'];
       const adminDescription = adminDescriptions[Math.floor(Math.random() * adminDescriptions.length)];
+      const adminCounterparty = 'Deutsche Post';
       
-      const { category: adminCat, confidence: adminConf } = categorizationService.categorize(adminDescription, adminAmount);
+      const { category: adminCat, confidence: adminConf } = categorizationService.categorize(adminDescription, adminAmount, adminCounterparty);
       
       transactions.push(createTransaction(
         `vb_${year}_${month}_admin`,
@@ -179,7 +186,7 @@ export async function generateMockData(): Promise<Transaction[]> {
         'expense',
         adminCat,
         adminDescription,
-        ['Deutsche Post', 'Volksbank'][Math.floor(Math.random() * 2)],
+        adminCounterparty,
         adminConf,
         'volksbank'
       ));
@@ -194,7 +201,7 @@ export async function generateMockData(): Promise<Transaction[]> {
         const donor = donorNames[Math.floor(Math.random() * donorNames.length)];
         const description = 'Spende Tierschutz';
         
-        const { category, confidence } = categorizationService.categorize(description, amount);
+        const { category, confidence } = categorizationService.categorize(description, amount, donor);
         
         transactions.push(createTransaction(
           `pp_${year}_${month}_donation_${i}`,
@@ -216,9 +223,11 @@ export async function generateMockData(): Promise<Transaction[]> {
         const day = 10 + Math.floor(Math.random() * 10);
         const amount = -1 * [45.99, 89.50, 125.00, 67.80][Math.floor(Math.random() * 4)];
         const descriptions = ['Zooplus Bestellung', 'Fressnapf Online', 'Tierbedarf'];
+        const merchants = ['Zooplus', 'Fressnapf', 'Tierbedarf24'];
         const description = descriptions[Math.floor(Math.random() * descriptions.length)];
+        const merchant = merchants[Math.floor(Math.random() * merchants.length)];
         
-        const { category, confidence } = categorizationService.categorize(description, amount);
+        const { category, confidence } = categorizationService.categorize(description, amount, merchant);
         const paypalTxId = `PP${year}${month}${day}PURCHASE${i}`;
         
         // PayPal transaction (primary - shows merchant)
@@ -229,7 +238,7 @@ export async function generateMockData(): Promise<Transaction[]> {
           'expense',
           category,
           description,
-          'Zooplus AG',
+          merchant,
           confidence,
           'paypal',
           paypalTxId
@@ -256,9 +265,11 @@ export async function generateMockData(): Promise<Transaction[]> {
       if (Math.random() > 0.5) {
         const day = 1 + Math.floor(Math.random() * 28);
         const amount = -1 * [35, 50, 65, 80][Math.floor(Math.random() * 4)];
+        const gasStations = ['Shell', 'Aral', 'Esso'];
+        const gasStation = gasStations[Math.floor(Math.random() * gasStations.length)];
         const description = 'Tankstelle Benzin';
         
-        const { category, confidence } = categorizationService.categorize(description, amount);
+        const { category, confidence } = categorizationService.categorize(description, amount, gasStation);
         
         transactions.push(createTransaction(
           `pp_${year}_${month}_transport`,
@@ -267,7 +278,7 @@ export async function generateMockData(): Promise<Transaction[]> {
           'expense',
           category,
           description,
-          'Shell Station',
+          gasStation,
           confidence,
           'paypal'
         ));

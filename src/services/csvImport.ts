@@ -265,7 +265,7 @@ export async function importVolksbankCSV(
         isDuplicate = true;
         duplicateReason = 'PayPal-Überweisung (echte Zahlung in PayPal)';
       } else {
-        const result = categorizationService.categorize(description, amount);
+        const result = categorizationService.categorize(description, amount, counterparty);
         category = result.category;
         confidence = result.confidence;
         // Check if categorization detected a transfer

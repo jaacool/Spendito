@@ -328,7 +328,8 @@ class GoCardlessApiService {
 
     const { category, confidence } = categorizationService.categorize(
       description,
-      amount
+      amount,
+      counterparty
     );
 
     return {

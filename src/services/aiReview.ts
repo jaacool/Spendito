@@ -161,7 +161,7 @@ Behalte die aktuelle Kategorie bei, wenn sie korrekt erscheint.`;
     return transactions.map(t => {
       // Re-categorize using current rules
       const { category: suggestedCategory, confidence } = 
-        categorizationService.categorize(t.description, t.amount);
+        categorizationService.categorize(t.description, t.amount, t.counterparty);
 
       const needsReview = 
         t.confidence < 0.5 || // Low confidence original categorization
@@ -227,7 +227,8 @@ Behalte die aktuelle Kategorie bei, wenn sie korrekt erscheint.`;
           await categorizationService.learnFromCorrection(
             transaction.description,
             result.suggestedCategory,
-            transaction.amount
+            transaction.amount,
+            transaction.counterparty
           );
         }
         
