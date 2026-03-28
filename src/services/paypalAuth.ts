@@ -96,6 +96,7 @@ class PayPalAuthService {
    * Store token in localStorage
    */
   private async storeToken(token: PayPalToken): Promise<void> {
+    console.log('[PayPal Auth] Storing token, expires_in:', token.expires_in);
     await AsyncStorage.setItem(STORAGE_KEYS.PAYPAL_TOKEN, token.access_token);
     await AsyncStorage.setItem(
       STORAGE_KEYS.PAYPAL_TOKEN_EXPIRY,
@@ -104,33 +105,47 @@ class PayPalAuthService {
     
     if (token.refresh_token) {
       await AsyncStorage.setItem(STORAGE_KEYS.PAYPAL_REFRESH_TOKEN, token.refresh_token);
+      console.log('[PayPal Auth] Refresh token stored');
     }
+    console.log('[PayPal Auth] Token stored successfully');
   }
 
   /**
    * Get valid access token (refresh if needed)
    */
   async getValidToken(): Promise<string | null> {
+    console.log('[PayPal Auth] Getting valid token...');
     const token = await AsyncStorage.getItem(STORAGE_KEYS.PAYPAL_TOKEN);
     const expiryStr = await AsyncStorage.getItem(STORAGE_KEYS.PAYPAL_TOKEN_EXPIRY);
     
+    console.log('[PayPal Auth] Token found:', !!token, 'Expiry found:', !!expiryStr);
+    
     if (!token || !expiryStr) {
+      console.log('[PayPal Auth] No token or expiry found in storage');
       return null;
     }
 
     const expiry = parseInt(expiryStr, 10);
+    const now = Date.now();
+    const timeUntilExpiry = expiry - now;
+    
+    console.log('[PayPal Auth] Token expiry check - Now:', now, 'Expiry:', expiry, 'Time until expiry (ms):', timeUntilExpiry);
     
     // Token still valid
-    if (Date.now() < expiry) {
+    if (now < expiry) {
+      console.log('[PayPal Auth] Token is still valid, returning it');
       return token;
     }
 
+    console.log('[PayPal Auth] Token expired, attempting refresh...');
     // Try to refresh
     const refreshToken = await AsyncStorage.getItem(STORAGE_KEYS.PAYPAL_REFRESH_TOKEN);
     if (refreshToken) {
       try {
+        console.log('[PayPal Auth] Refresh token found, refreshing...');
         const newToken = await this.refreshToken(refreshToken);
         await this.storeToken(newToken);
+        console.log('[PayPal Auth] Token refreshed successfully');
         return newToken.access_token;
       } catch (error) {
         console.error('[PayPal Auth] Token refresh failed:', error);
@@ -139,6 +154,7 @@ class PayPalAuthService {
       }
     }
 
+    console.log('[PayPal Auth] No refresh token available');
     return null;
   }
 
