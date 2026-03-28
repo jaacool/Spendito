@@ -101,28 +101,43 @@ Behalte die aktuelle Kategorie bei, wenn sie korrekt erscheint.`;
    * Review transactions using AI (Gemini 1.5 Flash)
    */
   async reviewTransactions(transactions: Transaction[]): Promise<ReviewResult[]> {
+    console.log('[AI Review] Starting review for', transactions.length, 'transactions');
+    console.log('[AI Review] API Key present:', !!GEMINI_API_KEY);
+    console.log('[AI Review] API Key length:', GEMINI_API_KEY?.length || 0);
+    
     if (!GEMINI_API_KEY) {
-      console.warn('Gemini API Key missing (EXPO_PUBLIC_GEMINI_API_KEY). Using rule-based review.');
+      console.warn('[AI Review] Gemini API Key missing (EXPO_PUBLIC_GEMINI_API_KEY). Using rule-based review.');
       return this.ruleBasedReview(transactions);
     }
 
     try {
+      console.log('[AI Review] Initializing Gemini model...');
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-3-flash-preview",
+        model: "gemini-1.5-flash",
         generationConfig: {
           responseMimeType: "application/json",
         }
       });
 
+      console.log('[AI Review] Generating prompt...');
       const prompt = this.generateReviewPrompt(transactions);
+      console.log('[AI Review] Prompt length:', prompt.length);
+      
+      console.log('[AI Review] Calling Gemini API...');
       const result = await model.generateContent(prompt);
+      console.log('[AI Review] API call successful, parsing response...');
+      
       const response = await result.response;
       const text = response.text();
+      console.log('[AI Review] Response received, length:', text.length);
       
       const parsedData = JSON.parse(text);
+      console.log('[AI Review] Parsed', parsedData.reviews?.length || 0, 'review results');
+      
       return this.mergeAIResults(parsedData.reviews, transactions);
     } catch (error) {
-      console.error('Gemini API call failed:', error);
+      console.error('[AI Review] Gemini API call failed:', error);
+      console.error('[AI Review] Error details:', JSON.stringify(error, null, 2));
       return this.ruleBasedReview(transactions);
     }
   }
@@ -160,6 +175,7 @@ Behalte die aktuelle Kategorie bei, wenn sie korrekt erscheint.`;
    * Rule-based review as fallback when AI is not configured
    */
   private ruleBasedReview(transactions: Transaction[]): ReviewResult[] {
+    console.log('[AI Review] Using rule-based fallback for', transactions.length, 'transactions');
     return transactions
       .filter(t => t.category && CATEGORY_INFO[t.category]) // Filter out invalid categories
       .map(t => {
@@ -191,10 +207,15 @@ Behalte die aktuelle Kategorie bei, wenn sie korrekt erscheint.`;
     transactions: Transaction[],
     quarter: string
   ): Promise<QuarterlyReviewSummary> {
+    console.log('[AI Review] Starting quarterly review for', quarter);
+    console.log('[AI Review] Total transactions:', transactions.length);
+    
     // Filter transactions that are not yet confirmed by user
     const transactionsToReview = transactions.filter(t => 
       !t.isManuallyCategized && !t.isUserConfirmed
     );
+    
+    console.log('[AI Review] Transactions to review:', transactionsToReview.length);
 
     const results = await this.reviewTransactions(transactionsToReview);
     const suggestedChanges = results.filter(r => r.needsReview);
