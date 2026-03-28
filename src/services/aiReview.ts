@@ -113,7 +113,7 @@ Behalte die aktuelle Kategorie bei, wenn sie korrekt erscheint.`;
     try {
       console.log('[AI Review] Initializing Gemini model...');
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash-latest",
+        model: "gemini-2.5-flash-lite",
         generationConfig: {
           responseMimeType: "application/json",
         }
