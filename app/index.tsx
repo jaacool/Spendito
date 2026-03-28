@@ -102,8 +102,8 @@ export default function HomeScreen() {
           }
         } else {
           // Search by description or counterparty
-          const matchesDescription = t.description.toLowerCase().includes(query);
-          const matchesCounterparty = t.counterparty.toLowerCase().includes(query);
+          const matchesDescription = t.description?.toLowerCase().includes(query) || false;
+          const matchesCounterparty = t.counterparty?.toLowerCase().includes(query) || false;
           if (!matchesDescription && !matchesCounterparty) return false;
         }
       }
