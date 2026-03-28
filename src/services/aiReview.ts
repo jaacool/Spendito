@@ -56,14 +56,16 @@ class AIReviewService {
       .map(cat => `- ${cat}: ${CATEGORY_INFO[cat].labelDe}`)
       .join('\n');
 
-    const transactionList = transactions.map(t => ({
-      id: t.id,
-      description: t.description,
-      counterparty: t.counterparty,
-      amount: t.amount,
-      currentCategory: t.category,
-      currentCategoryLabel: CATEGORY_INFO[t.category].labelDe,
-    }));
+    const transactionList = transactions
+      .filter(t => t.category && CATEGORY_INFO[t.category]) // Filter out invalid categories
+      .map(t => ({
+        id: t.id,
+        description: t.description,
+        counterparty: t.counterparty,
+        amount: t.amount,
+        currentCategory: t.category,
+        currentCategoryLabel: CATEGORY_INFO[t.category].labelDe,
+      }));
 
     return `Du bist ein Finanzexperte für einen Hunde-Rettungsverein. 
 Überprüfe die folgenden Transaktionen und ihre Kategorisierungen.
@@ -158,26 +160,28 @@ Behalte die aktuelle Kategorie bei, wenn sie korrekt erscheint.`;
    * Rule-based review as fallback when AI is not configured
    */
   private ruleBasedReview(transactions: Transaction[]): ReviewResult[] {
-    return transactions.map(t => {
-      // Re-categorize using current rules
-      const { category: suggestedCategory, confidence } = 
-        categorizationService.categorize(t.description, t.amount, t.counterparty);
+    return transactions
+      .filter(t => t.category && CATEGORY_INFO[t.category]) // Filter out invalid categories
+      .map(t => {
+        // Re-categorize using current rules
+        const { category: suggestedCategory, confidence } = 
+          categorizationService.categorize(t.description, t.amount, t.counterparty);
 
-      const needsReview = 
-        t.confidence < 0.5 || // Low confidence original categorization
-        (suggestedCategory !== t.category && confidence > 0.7); // Different suggestion with high confidence
+        const needsReview = 
+          t.confidence < 0.5 || // Low confidence original categorization
+          (suggestedCategory !== t.category && confidence > 0.7); // Different suggestion with high confidence
 
-      return {
-        transactionId: t.id,
-        originalCategory: t.category,
-        suggestedCategory: needsReview ? suggestedCategory : t.category,
-        confidence,
-        reasoning: needsReview 
-          ? `Basierend auf "${t.description}" könnte ${CATEGORY_INFO[suggestedCategory].labelDe} passender sein.`
-          : 'Kategorisierung erscheint korrekt.',
-        needsReview,
-      };
-    });
+        return {
+          transactionId: t.id,
+          originalCategory: t.category,
+          suggestedCategory: needsReview ? suggestedCategory : t.category,
+          confidence,
+          reasoning: needsReview 
+            ? `Basierend auf "${t.description}" könnte ${CATEGORY_INFO[suggestedCategory].labelDe} passender sein.`
+            : 'Kategorisierung erscheint korrekt.',
+          needsReview,
+        };
+      });
   }
 
   /**
