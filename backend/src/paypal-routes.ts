@@ -193,24 +193,8 @@ router.get('/callback', async (req, res) => {
     const token = await exchangeCodeForToken(code as string, redirectUri);
     
     // Token is returned to client, not stored server-side
-    // But we need to create the connection record in DB for sync to work
-    
-    // Check if connection already exists
-    let connection = db.prepare(`
-      SELECT * FROM bank_connections WHERE user_id = ? AND bank_id = 'paypal'
-    `).get(userId) as any;
-    
-    if (!connection) {
-      // Create new connection
-      const connectionId = uuidv4();
-      db.prepare(`
-        INSERT INTO bank_connections (id, user_id, bank_id, bank_name, bank_url, login_name, created_at, last_sync)
-        VALUES (?, ?, 'paypal', 'PayPal', 'https://api-m.paypal.com', 'oauth', datetime('now'), NULL)
-      `).run(connectionId, userId);
-      console.log(`[PayPal] Created connection record for user ${userId}`);
-    } else {
-      console.log(`[PayPal] Connection record already exists for user ${userId}`);
-    }
+    // No connection data stored for security - client manages everything
+    console.log(`[PayPal] OAuth successful for user ${userId}, sending token to client`);
 
     // Redirect to success page or deep link back to app
     res.send(`
@@ -312,6 +296,7 @@ router.post('/refresh-token', async (req, res) => {
 
 /**
  * Sync PayPal transactions - client sends token
+ * Backend acts as proxy only, no connection data stored
  */
 router.post('/sync/:userId', async (req, res) => {
   try {
@@ -332,17 +317,23 @@ router.post('/sync/:userId', async (req, res) => {
     const start = startDate || new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000).toISOString().split('.')[0] + 'Z';
     const endFormatted = end.split('.')[0] + 'Z';
 
-    console.log(`[PayPal] Original Start: ${new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000).toISOString()}`);
-    console.log(`[PayPal] Formatted Start: ${start}`);
-    console.log(`[PayPal] Formatted End: ${endFormatted}`);
+    console.log(`[PayPal] Sync request for user ${userId}`);
+    console.log(`[PayPal] Date range: ${start} to ${endFormatted}`);
 
-    // Get connection
-    const connection = db.prepare(`
+    // Get or create connection (minimal data, no credentials stored)
+    let connection = db.prepare(`
       SELECT * FROM bank_connections WHERE user_id = ? AND bank_id = 'paypal'
     `).get(userId) as any;
 
     if (!connection) {
-      return res.status(400).json({ error: 'Keine PayPal-Verbindung gefunden' });
+      // Create minimal connection record (no credentials)
+      const connectionId = uuidv4();
+      db.prepare(`
+        INSERT INTO bank_connections (id, user_id, bank_id, bank_name, bank_url, login_name, created_at, last_sync)
+        VALUES (?, ?, 'paypal', 'PayPal', 'https://api-m.paypal.com', 'oauth', datetime('now'), NULL)
+      `).run(connectionId, userId);
+      connection = { id: connectionId };
+      console.log(`[PayPal] Created minimal connection record (no credentials stored)`);
     }
 
     // Get or create account
