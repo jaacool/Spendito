@@ -185,28 +185,35 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const handleDisconnectPayPal = async () => {
     console.log('[PayPal] Disconnect requested');
-    Alert.alert(
-      'PayPal trennen',
-      'Möchtest du PayPal wirklich trennen? Alle PayPal-Transaktionen werden gelöscht.',
-      [
-        { text: 'Abbrechen', style: 'cancel' },
-        {
-          text: 'Trennen',
-          style: 'destructive',
-          onPress: async () => {
-            console.log('[PayPal] Disconnecting...');
-            try {
-              await backendApiService.disconnectPayPal();
-              await loadPayPalStatus();
-              Alert.alert('Erfolg', 'PayPal wurde getrennt.');
-            } catch (error: any) {
-              console.error('[PayPal] Disconnect error:', error);
-              Alert.alert('Fehler', 'Trennen fehlgeschlagen: ' + error.message);
-            }
-          },
-        },
-      ]
-    );
+    
+    const confirmDisconnect = typeof window !== 'undefined' && window.confirm
+      ? window.confirm('Möchtest du PayPal wirklich trennen? Alle PayPal-Transaktionen werden gelöscht.')
+      : true;
+    
+    if (!confirmDisconnect) {
+      return;
+    }
+    
+    console.log('[PayPal] Disconnecting...');
+    setIsPaypalLoading(true);
+    try {
+      await backendApiService.disconnectPayPal();
+      await loadPayPalStatus();
+      if (typeof window !== 'undefined' && window.alert) {
+        window.alert('PayPal wurde getrennt.');
+      } else {
+        Alert.alert('Erfolg', 'PayPal wurde getrennt.');
+      }
+    } catch (error: any) {
+      console.error('[PayPal] Disconnect error:', error);
+      if (typeof window !== 'undefined' && window.alert) {
+        window.alert('Trennen fehlgeschlagen: ' + error.message);
+      } else {
+        Alert.alert('Fehler', 'Trennen fehlgeschlagen: ' + error.message);
+      }
+    } finally {
+      setIsPaypalLoading(false);
+    }
   };
 
   const handleConnectBank = async () => {
