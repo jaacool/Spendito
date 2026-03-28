@@ -140,10 +140,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const handleSyncPayPal = async () => {
     setIsPaypalLoading(true);
     try {
-      console.log('[PayPal] Starting sync...');
-      // First sync from PayPal API to backend
+      console.log('[PayPal] Starting sync via proxy...');
+      // Sync via proxy - backend returns transactions directly, doesn't store them
       const result = await backendApiService.syncPayPal();
-      console.log('[PayPal] Backend sync result:', result);
+      console.log('[PayPal] Proxy result:', result);
       
       if (result.needsAuth) {
         // User needs to connect PayPal first
@@ -158,32 +158,44 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         return;
       }
       
-      // Now fetch the transactions from backend and import to local storage
-      const transactions = await backendApiService.getPayPalTransactions();
-      console.log(`[PayPal] Fetched ${transactions.length} transactions from backend`);
+      // Transactions are returned directly from proxy - store them locally
+      const transactions = result.transactions || [];
+      console.log(`[PayPal] Received ${transactions.length} transactions from proxy (not stored on server)`);
       
       if (transactions.length > 0) {
         const importResult = await storageService.importTransactions(transactions);
-        console.log('[PayPal] Storage import result:', importResult);
+        console.log('[PayPal] Local storage import result:', importResult);
         
-        Alert.alert(
-          'PayPal Sync',
-          `${importResult.added} neue Transaktionen importiert!\n(${importResult.duplicates} Duplikate übersprungen)`
-        );
+        if (typeof window !== 'undefined' && window.alert) {
+          window.alert(`PayPal Sync erfolgreich!\n\n${importResult.added} neue Transaktionen importiert\n${importResult.duplicates} Duplikate übersprungen\n\n✅ Daten nur lokal gespeichert, nicht auf Server!`);
+        } else {
+          Alert.alert(
+            'PayPal Sync',
+            `${importResult.added} neue Transaktionen importiert!\n(${importResult.duplicates} Duplikate übersprungen)\n\n✅ Nur lokal gespeichert!`
+          );
+        }
         
         // Refresh the app data to show new transactions
         await refreshData();
       } else {
-        Alert.alert(
-          'PayPal Sync',
-          `Keine Transaktionen gefunden.\n\nBackend meldete: ${result.transactionsFound || 0} gefunden, ${result.transactionsAdded || 0} neu gespeichert.`
-        );
+        if (typeof window !== 'undefined' && window.alert) {
+          window.alert(`Keine neuen Transaktionen gefunden.\n\n${result.transactionsFound || 0} Transaktionen von PayPal abgerufen.`);
+        } else {
+          Alert.alert(
+            'PayPal Sync',
+            `Keine neuen Transaktionen gefunden.\n\n${result.transactionsFound || 0} von PayPal abgerufen.`
+          );
+        }
       }
       
       await loadPayPalStatus();
     } catch (error: any) {
       console.error('[PayPal] Sync error:', error);
-      Alert.alert('Fehler', error.message || 'PayPal Sync fehlgeschlagen');
+      if (typeof window !== 'undefined' && window.alert) {
+        window.alert('Fehler: ' + (error.message || 'PayPal Sync fehlgeschlagen'));
+      } else {
+        Alert.alert('Fehler', error.message || 'PayPal Sync fehlgeschlagen');
+      }
     } finally {
       setIsPaypalLoading(false);
     }

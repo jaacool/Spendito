@@ -348,9 +348,17 @@ class BackendApiService {
   }
 
   /**
-   * Sync PayPal transactions
+   * Sync PayPal transactions via proxy
+   * Backend returns transactions directly, doesn't store them
    */
-  async syncPayPal(startDate?: string, endDate?: string): Promise<{ success: boolean; transactionsFound: number; transactionsAdded: number; needsAuth?: boolean; error?: string }> {
+  async syncPayPal(startDate?: string, endDate?: string): Promise<{ 
+    success: boolean; 
+    transactionsFound: number; 
+    transactionsAdded: number; 
+    needsAuth?: boolean; 
+    error?: string;
+    transactions?: any[];
+  }> {
     try {
       return await paypalAuthService.syncTransactions(startDate, endDate);
     } catch (error: any) {
