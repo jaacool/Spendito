@@ -193,6 +193,24 @@ router.get('/callback', async (req, res) => {
     const token = await exchangeCodeForToken(code as string, redirectUri);
     
     // Token is returned to client, not stored server-side
+    // But we need to create the connection record in DB for sync to work
+    
+    // Check if connection already exists
+    let connection = db.prepare(`
+      SELECT * FROM bank_connections WHERE user_id = ? AND bank_id = 'paypal'
+    `).get(userId) as any;
+    
+    if (!connection) {
+      // Create new connection
+      const connectionId = uuidv4();
+      db.prepare(`
+        INSERT INTO bank_connections (id, user_id, bank_id, bank_name, created_at, last_sync)
+        VALUES (?, ?, 'paypal', 'PayPal', datetime('now'), NULL)
+      `).run(connectionId, userId);
+      console.log(`[PayPal] Created connection record for user ${userId}`);
+    } else {
+      console.log(`[PayPal] Connection record already exists for user ${userId}`);
+    }
 
     // Redirect to success page or deep link back to app
     res.send(`
@@ -318,20 +336,13 @@ router.post('/sync/:userId', async (req, res) => {
     console.log(`[PayPal] Formatted Start: ${start}`);
     console.log(`[PayPal] Formatted End: ${endFormatted}`);
 
-    // Get or create connection (auto-create if client has valid token)
-    let connection = db.prepare(`
+    // Get connection
+    const connection = db.prepare(`
       SELECT * FROM bank_connections WHERE user_id = ? AND bank_id = 'paypal'
     `).get(userId) as any;
 
     if (!connection) {
-      console.log('[PayPal] No connection found, creating new one...');
-      const connectionId = uuidv4();
-      db.prepare(`
-        INSERT INTO bank_connections (id, user_id, bank_id, bank_name, status, created_at)
-        VALUES (?, ?, 'paypal', 'PayPal', 'active', datetime('now'))
-      `).run(connectionId, userId);
-      connection = { id: connectionId };
-      console.log('[PayPal] Connection created:', connectionId);
+      return res.status(400).json({ error: 'Keine PayPal-Verbindung gefunden' });
     }
 
     // Get or create account
