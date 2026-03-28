@@ -23,6 +23,7 @@ export function FinanzamtModal({ visible, onClose }: FinanzamtModalProps) {
   const { availableYears, transactions, yearSummary, selectedYear, setSelectedYear } = useApp();
   const [isExporting, setIsExporting] = useState(false);
   const [organizationName, setOrganizationName] = useState('Tierschutzverein');
+  const [exportFormat, setExportFormat] = useState<'pdf' | 'html'>('pdf');
 
   const handleExport = async () => {
     if (!yearSummary) {
@@ -37,11 +38,12 @@ export function FinanzamtModal({ visible, onClose }: FinanzamtModalProps) {
 
     setIsExporting(true);
     try {
-      await finanzamtExportService.generatePDF({
+      await finanzamtExportService.generateExport({
         year: selectedYear,
         transactions,
         yearSummary,
         organizationName: organizationName.trim(),
+        format: exportFormat,
       });
       
       Alert.alert(
@@ -103,6 +105,62 @@ export function FinanzamtModal({ visible, onClose }: FinanzamtModalProps) {
                 placeholder="z.B. Tierschutzverein e.V."
                 placeholderTextColor="#9ca3af"
               />
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Export-Format</Text>
+              <View style={styles.formatGrid}>
+                <Pressable
+                  style={[
+                    styles.formatButton,
+                    exportFormat === 'pdf' && styles.formatButtonActive,
+                  ]}
+                  onPress={() => setExportFormat('pdf')}
+                >
+                  <FileText size={20} color={exportFormat === 'pdf' ? '#fff' : '#3b82f6'} />
+                  <Text
+                    style={[
+                      styles.formatButtonText,
+                      exportFormat === 'pdf' && styles.formatButtonTextActive,
+                    ]}
+                  >
+                    PDF (empfohlen)
+                  </Text>
+                  <Text
+                    style={[
+                      styles.formatButtonSubtext,
+                      exportFormat === 'pdf' && { color: '#e0e7ff' },
+                    ]}
+                  >
+                    Professionell & druckfertig
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.formatButton,
+                    exportFormat === 'html' && styles.formatButtonActive,
+                  ]}
+                  onPress={() => setExportFormat('html')}
+                >
+                  <FileText size={20} color={exportFormat === 'html' ? '#fff' : '#6b7280'} />
+                  <Text
+                    style={[
+                      styles.formatButtonText,
+                      exportFormat === 'html' && styles.formatButtonTextActive,
+                    ]}
+                  >
+                    HTML
+                  </Text>
+                  <Text
+                    style={[
+                      styles.formatButtonSubtext,
+                      exportFormat === 'html' && { color: '#e0e7ff' },
+                    ]}
+                  >
+                    Im Browser öffnen
+                  </Text>
+                </Pressable>
+              </View>
             </View>
 
             <View style={styles.section}>
@@ -313,6 +371,39 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 15,
     color: '#1f2937',
+  },
+  formatGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  formatButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    gap: 6,
+  },
+  formatButtonActive: {
+    backgroundColor: '#3b82f6',
+    borderColor: '#2563eb',
+  },
+  formatButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1f2937',
+    textAlign: 'center',
+  },
+  formatButtonTextActive: {
+    color: '#fff',
+  },
+  formatButtonSubtext: {
+    fontSize: 11,
+    color: '#9ca3af',
+    textAlign: 'center',
   },
   yearGrid: {
     flexDirection: 'row',

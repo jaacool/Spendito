@@ -10,42 +10,92 @@ interface ExportOptions {
   transactions: Transaction[];
   yearSummary: YearSummary;
   organizationName: string;
+  format?: 'pdf' | 'html';
 }
 
 export class FinanzamtExportService {
-  async generatePDF(options: ExportOptions): Promise<void> {
+  async generateExport(options: ExportOptions): Promise<void> {
+    const exportFormat = options.format || 'pdf';
     const html = this.generateHTML(options);
     
     try {
-      const fileName = `Finanzamt_Export_${options.organizationName.replace(/\s+/g, '_')}_${options.year}.html`;
-      
       if (Platform.OS === 'web') {
-        // Web/Electron Export
-        const blob = new Blob([html], { type: 'text/html' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = fileName;
-        link.click();
-        URL.revokeObjectURL(url);
-      } else {
-        // Native Export (iOS/Android)
-        const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
-        await FileSystem.writeAsStringAsync(fileUri, html, {
-          encoding: FileSystem.EncodingType.UTF8,
-        });
-        
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(fileUri, {
-            mimeType: 'text/html',
-            dialogTitle: `Finanzamt Export ${options.year}`,
-          });
+        // Web/Electron Export - beide Formate möglich
+        if (exportFormat === 'pdf') {
+          await this.exportAsPDFWeb(html, options);
+        } else {
+          await this.exportAsHTMLWeb(html, options);
         }
+      } else {
+        // Native Export (iOS/Android) - HTML als Fallback
+        // Für echtes PDF würde man expo-print benötigen, aber das hat Versionskonflikte
+        await this.exportAsHTMLNative(html, options);
       }
     } catch (error) {
-      console.error('PDF Export Error:', error);
+      console.error('Export Error:', error);
       throw new Error('Export fehlgeschlagen');
     }
+  }
+
+  private async exportAsPDFWeb(html: string, options: ExportOptions): Promise<void> {
+    // Erstelle ein verstecktes iframe für PDF-Druck
+    const printWindow = document.createElement('iframe');
+    printWindow.style.position = 'absolute';
+    printWindow.style.width = '0';
+    printWindow.style.height = '0';
+    printWindow.style.border = 'none';
+    
+    document.body.appendChild(printWindow);
+    
+    const doc = printWindow.contentDocument || printWindow.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(html);
+      doc.close();
+      
+      // Warte kurz, damit das Dokument gerendert wird
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Öffne Druck-Dialog (Benutzer kann als PDF speichern)
+      printWindow.contentWindow?.print();
+      
+      // Cleanup nach 2 Sekunden
+      setTimeout(() => {
+        document.body.removeChild(printWindow);
+      }, 2000);
+    }
+  }
+
+  private async exportAsHTMLWeb(html: string, options: ExportOptions): Promise<void> {
+    const fileName = `Finanzamt_Export_${options.organizationName.replace(/\s+/g, '_')}_${options.year}.html`;
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  private async exportAsHTMLNative(html: string, options: ExportOptions): Promise<void> {
+    const fileName = `Finanzamt_Export_${options.organizationName.replace(/\s+/g, '_')}_${options.year}.html`;
+    const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
+    
+    await FileSystem.writeAsStringAsync(fileUri, html, {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
+    
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(fileUri, {
+        mimeType: 'text/html',
+        dialogTitle: `Finanzamt Export ${options.year}`,
+      });
+    }
+  }
+
+  // Legacy-Methode für Kompatibilität
+  async generatePDF(options: ExportOptions): Promise<void> {
+    return this.generateExport({ ...options, format: 'pdf' });
   }
 
   private generateHTML(options: ExportOptions): string {
@@ -61,6 +111,10 @@ export class FinanzamtExportService {
   <title>Finanzamt Export ${year}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    @page {
+      size: A4;
+      margin: 20mm;
+    }
     body {
       font-family: 'Helvetica Neue', Arial, sans-serif;
       font-size: 11pt;
@@ -69,6 +123,25 @@ export class FinanzamtExportService {
       padding: 40px;
       max-width: 1200px;
       margin: 0 auto;
+    }
+    @media print {
+      body { 
+        padding: 0; 
+        max-width: 100%;
+      }
+      .section { 
+        page-break-inside: avoid;
+        page-break-after: auto;
+      }
+      tr { 
+        page-break-inside: avoid;
+      }
+      .header {
+        page-break-after: avoid;
+      }
+      table {
+        page-break-before: auto;
+      }
     }
     .header {
       text-align: center;
@@ -187,11 +260,7 @@ export class FinanzamtExportService {
       text-align: center;
       font-size: 9pt;
       color: #6b7280;
-    }
-    @media print {
-      body { padding: 20px; }
-      .section { page-break-inside: avoid; }
-      tr { page-break-inside: avoid; }
+      page-break-inside: avoid;
     }
   </style>
 </head>
