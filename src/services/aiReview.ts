@@ -122,6 +122,7 @@ Behalte die aktuelle Kategorie bei, wenn sie korrekt erscheint.`;
       console.log('[AI Review] Generating prompt...');
       const prompt = this.generateReviewPrompt(transactions);
       console.log('[AI Review] Prompt length:', prompt.length);
+      console.log('[AI Review] Full prompt:', prompt);
       
       console.log('[AI Review] Calling Gemini API...');
       const result = await model.generateContent(prompt);
@@ -130,8 +131,10 @@ Behalte die aktuelle Kategorie bei, wenn sie korrekt erscheint.`;
       const response = await result.response;
       const text = response.text();
       console.log('[AI Review] Response received, length:', text.length);
+      console.log('[AI Review] Raw response:', text);
       
       const parsedData = JSON.parse(text);
+      console.log('[AI Review] Parsed data:', JSON.stringify(parsedData, null, 2));
       console.log('[AI Review] Parsed', parsedData.reviews?.length || 0, 'review results');
       
       return this.mergeAIResults(parsedData.reviews, transactions);
