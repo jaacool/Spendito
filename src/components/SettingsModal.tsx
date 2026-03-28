@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Modal, Pressable, ActivityIndicator, ScrollView, TextInput, Alert, Linking, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, Modal, Pressable, ActivityIndicator, ScrollView, TextInput, Alert, Linking, TouchableOpacity, Platform, Animated } from 'react-native';
 import { X, Type, Minus, Circle, Plus, Building2, Wallet, Link, Unlink, CheckCircle2, RefreshCw, Eye, EyeOff, ExternalLink, Trash2, Upload, FileText, Download, Share2 } from 'lucide-react-native';
 import { useSettings, UIScale } from '../context/SettingsContext';
 import { backendApiService } from '../services/backendApi';
@@ -58,6 +58,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [isCSVImporting, setIsCSVImporting] = useState(false);
   const [csvImportResult, setCSVImportResult] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Cache deletion warning state
+  const [showCacheWarning, setShowCacheWarning] = useState(false);
+  const [cacheConfirmStep, setCacheConfirmStep] = useState<1 | 2 | 3>(1);
+  const blinkAnim = useRef(new Animated.Value(1)).current;
+  const alarmAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -570,6 +576,88 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const appVersion = Constants.expoConfig?.version || '1.0.0';
 
+  // Blinking animation for cache warning
+  useEffect(() => {
+    if (showCacheWarning) {
+      // Start blinking animation
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(blinkAnim, {
+            toValue: 0.2,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(blinkAnim, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+
+      // Play alarm sound
+      if (typeof Audio !== 'undefined') {
+        // For web, use HTML5 Audio
+        if (typeof window !== 'undefined') {
+          // Create alarm sound using Web Audio API or data URL
+          const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const oscillator = audioContext.createOscillator();
+          const gainNode = audioContext.createGain();
+          
+          oscillator.connect(gainNode);
+          gainNode.connect(audioContext.destination);
+          
+          oscillator.frequency.value = 800;
+          oscillator.type = 'sine';
+          gainNode.gain.value = 0.3;
+          
+          oscillator.start();
+          setTimeout(() => {
+            oscillator.frequency.value = 600;
+          }, 200);
+          setTimeout(() => {
+            oscillator.frequency.value = 800;
+          }, 400);
+          setTimeout(() => {
+            oscillator.stop();
+          }, 600);
+        }
+      }
+    } else {
+      blinkAnim.setValue(1);
+    }
+  }, [showCacheWarning]);
+
+  const handleCacheDeleteClick = () => {
+    setShowCacheWarning(true);
+    setCacheConfirmStep(1);
+  };
+
+  const handleCacheConfirmStep1 = () => {
+    setCacheConfirmStep(2);
+  };
+
+  const handleCacheConfirmStep2 = () => {
+    setCacheConfirmStep(3);
+  };
+
+  const handleCacheConfirmStep3 = async () => {
+    setShowCacheWarning(false);
+    await storageService.clearAll();
+    if (typeof window !== 'undefined' && window.alert) {
+      window.alert('Cache wurde gelöscht. Die Seite wird nun neu geladen.');
+      window.location.reload();
+    } else {
+      Alert.alert('Erfolg', 'Cache wurde gelöscht.');
+      onClose();
+    }
+  };
+
+  const handleCancelCacheDeletion = () => {
+    setShowCacheWarning(false);
+    setCacheConfirmStep(1);
+  };
+
   return (
     <Modal
       visible={isOpen}
@@ -963,35 +1051,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <Text style={styles.versionText}>Spendito v{appVersion}</Text>
               <Pressable 
                 style={styles.clearCacheButton}
-                onPress={async () => {
-                  const title = 'Cache löschen';
-                  const message = 'Alle lokalen Daten werden gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.';
-                  
-                  if (typeof window !== 'undefined' && window.confirm) {
-                    if (window.confirm(`${title}\n\n${message}`)) {
-                      await storageService.clearAll();
-                      alert('Cache wurde gelöscht. Die Seite wird nun neu geladen.');
-                      window.location.reload();
-                    }
-                  } else {
-                    Alert.alert(
-                      title,
-                      message,
-                      [
-                        { text: 'Abbrechen', style: 'cancel' },
-                        {
-                          text: 'Löschen',
-                          style: 'destructive',
-                          onPress: async () => {
-                            await storageService.clearAll();
-                            Alert.alert('Erfolg', 'Cache wurde gelöscht.');
-                            onClose();
-                          },
-                        },
-                      ]
-                    );
-                  }
-                }}
+                onPress={handleCacheDeleteClick}
               >
                 <Trash2 size={14} color="#ef4444" />
                 <Text style={styles.clearCacheText}>Cache löschen</Text>
@@ -1000,6 +1060,108 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </ScrollView>
         </Pressable>
       </Pressable>
+
+      {/* Cache Deletion Warning Modal */}
+      {showCacheWarning && (
+        <Modal
+          visible={showCacheWarning}
+          transparent
+          animationType="fade"
+          onRequestClose={handleCancelCacheDeletion}
+        >
+          <Pressable style={styles.warningOverlay} onPress={handleCancelCacheDeletion}>
+            <Animated.View 
+              style={[
+                styles.warningContainer,
+                { opacity: blinkAnim }
+              ]}
+              onStartShouldSetResponder={() => true}
+              onResponderRelease={(e) => e.stopPropagation()}
+            >
+              <View style={styles.warningHeader}>
+                <Text style={styles.warningTitle}>⚠️ WARNUNG ⚠️</Text>
+              </View>
+
+              <View style={styles.warningContent}>
+                {cacheConfirmStep === 1 && (
+                  <>
+                    <Text style={styles.warningText}>
+                      Möchtest du wirklich den gesamten Cache löschen?
+                    </Text>
+                    <Text style={styles.warningSubtext}>
+                      Alle lokalen Daten werden unwiderruflich gelöscht!
+                    </Text>
+                    <View style={styles.warningButtons}>
+                      <Pressable 
+                        style={styles.warningCancelButton}
+                        onPress={handleCancelCacheDeletion}
+                      >
+                        <Text style={styles.warningCancelText}>Abbrechen</Text>
+                      </Pressable>
+                      <Pressable 
+                        style={styles.warningConfirmButton}
+                        onPress={handleCacheConfirmStep1}
+                      >
+                        <Text style={styles.warningConfirmText}>Ja, fortfahren</Text>
+                      </Pressable>
+                    </View>
+                  </>
+                )}
+
+                {cacheConfirmStep === 2 && (
+                  <>
+                    <Text style={styles.warningText}>
+                      Hast du Aaron auch schon gefragt?
+                    </Text>
+                    <Text style={styles.warningSubtext}>
+                      Diese Aktion sollte mit Aaron abgestimmt werden.
+                    </Text>
+                    <View style={styles.warningButtons}>
+                      <Pressable 
+                        style={styles.warningCancelButton}
+                        onPress={handleCancelCacheDeletion}
+                      >
+                        <Text style={styles.warningCancelText}>Nein, abbrechen</Text>
+                      </Pressable>
+                      <Pressable 
+                        style={styles.warningConfirmButton}
+                        onPress={handleCacheConfirmStep2}
+                      >
+                        <Text style={styles.warningConfirmText}>Ja, habe ich</Text>
+                      </Pressable>
+                    </View>
+                  </>
+                )}
+
+                {cacheConfirmStep === 3 && (
+                  <>
+                    <Text style={styles.warningText}>
+                      LETZTE WARNUNG!
+                    </Text>
+                    <Text style={styles.warningSubtext}>
+                      Bist du dir absolut sicher? Der Cache wird JETZT gelöscht!
+                    </Text>
+                    <View style={styles.warningButtons}>
+                      <Pressable 
+                        style={styles.warningCancelButton}
+                        onPress={handleCancelCacheDeletion}
+                      >
+                        <Text style={styles.warningCancelText}>Abbrechen</Text>
+                      </Pressable>
+                      <Pressable 
+                        style={styles.warningDangerButton}
+                        onPress={handleCacheConfirmStep3}
+                      >
+                        <Text style={styles.warningDangerText}>JA, LÖSCHEN!</Text>
+                      </Pressable>
+                    </View>
+                  </>
+                )}
+              </View>
+            </Animated.View>
+          </Pressable>
+        </Modal>
+      )}
     </Modal>
   );
 }
@@ -1440,5 +1602,103 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#166534',
     lineHeight: 16,
+  },
+  // Warning modal styles
+  warningOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  warningContainer: {
+    backgroundColor: '#dc2626',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 400,
+    borderWidth: 4,
+    borderColor: '#fef2f2',
+    shadowColor: '#dc2626',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 20,
+    elevation: 20,
+  },
+  warningHeader: {
+    backgroundColor: '#991b1b',
+    padding: 20,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    alignItems: 'center',
+  },
+  warningTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#ffffff',
+    textAlign: 'center',
+    letterSpacing: 2,
+  },
+  warningContent: {
+    padding: 24,
+  },
+  warningText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  warningSubtext: {
+    fontSize: 14,
+    color: '#fecaca',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  warningButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  warningCancelButton: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+  },
+  warningCancelText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  warningConfirmButton: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 10,
+    backgroundColor: '#991b1b',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#7f1d1d',
+  },
+  warningConfirmText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  warningDangerButton: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 10,
+    backgroundColor: '#7f1d1d',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#450a0a',
+  },
+  warningDangerText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#ffffff',
+    letterSpacing: 1,
   },
 });
