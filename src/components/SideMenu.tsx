@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable, Modal, ScrollView } from 'react-native';
-import { X, Calendar, ChevronRight, Dog, Settings, RefreshCw, Sparkles, SlidersHorizontal } from 'lucide-react-native';
+import { X, Calendar, ChevronRight, Dog, Settings, RefreshCw, Sparkles, SlidersHorizontal, FileText } from 'lucide-react-native';
 
 interface SideMenuProps {
   isOpen: boolean;
@@ -11,6 +11,7 @@ interface SideMenuProps {
   onReloadData: () => void;
   onOpenReview: () => void;
   onOpenSettings: () => void;
+  onOpenFinanzamt: () => void;
   isDesktopSidebar?: boolean;
 }
 
@@ -23,6 +24,7 @@ export function SideMenu({
   onReloadData,
   onOpenReview,
   onOpenSettings,
+  onOpenFinanzamt,
   isDesktopSidebar = false,
 }: SideMenuProps) {
   // Desktop Sidebar - render without Modal
@@ -87,6 +89,14 @@ export function SideMenu({
             >
               <Sparkles size={20} color="#8b5cf6" />
               <Text style={[styles.actionText, { color: '#8b5cf6' }]}>KI-Überprüfung starten</Text>
+            </Pressable>
+
+            <Pressable
+              style={[styles.actionItem, styles.finanzamtAction]}
+              onPress={onOpenFinanzamt}
+            >
+              <FileText size={20} color="#3b82f6" />
+              <Text style={[styles.actionText, { color: '#3b82f6' }]}>Finanzamt Export</Text>
             </Pressable>
 
             <Pressable
@@ -202,6 +212,17 @@ export function SideMenu({
               >
                 <Sparkles size={20} color="#8b5cf6" />
                 <Text style={[styles.actionText, { color: '#8b5cf6' }]}>KI-Überprüfung starten</Text>
+              </Pressable>
+
+              <Pressable
+                style={[styles.actionItem, styles.finanzamtAction]}
+                onPress={() => {
+                  onOpenFinanzamt();
+                  onClose();
+                }}
+              >
+                <FileText size={20} color="#3b82f6" />
+                <Text style={[styles.actionText, { color: '#3b82f6' }]}>Finanzamt Export</Text>
               </Pressable>
 
               <Pressable
@@ -382,6 +403,9 @@ const styles = StyleSheet.create({
   },
   reviewAction: {
     backgroundColor: '#f3e8ff',
+  },
+  finanzamtAction: {
+    backgroundColor: '#eff6ff',
   },
   actionText: {
     fontSize: 15,

@@ -23,6 +23,7 @@ import {
   ReviewModal,
   CategoryBar,
   SettingsModal,
+  FinanzamtModal,
 } from '../src/components';
 import { Category, SourceAccount, CATEGORY_INFO } from '../src/types';
 
@@ -54,6 +55,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isFinanzamtOpen, setIsFinanzamtOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
 
@@ -165,6 +167,7 @@ export default function HomeScreen() {
             onReloadData={loadMockData}
             onOpenReview={() => setIsReviewOpen(true)}
             onOpenSettings={() => setIsSettingsOpen(true)}
+            onOpenFinanzamt={() => setIsFinanzamtOpen(true)}
             isDesktopSidebar={true}
           />
         )}
@@ -646,6 +649,7 @@ export default function HomeScreen() {
           onReloadData={loadMockData}
           onOpenReview={() => setIsReviewOpen(true)}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenFinanzamt={() => setIsFinanzamtOpen(true)}
         />
       )}
 
@@ -662,6 +666,12 @@ export default function HomeScreen() {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+      />
+
+      {/* Finanzamt Export Modal */}
+      <FinanzamtModal
+        visible={isFinanzamtOpen}
+        onClose={() => setIsFinanzamtOpen(false)}
       />
     </SafeAreaView>
   );
