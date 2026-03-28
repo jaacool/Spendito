@@ -56,16 +56,16 @@ class AIReviewService {
       .map(cat => `- ${cat}: ${CATEGORY_INFO[cat].labelDe}`)
       .join('\n');
 
-    const transactionList = transactions
-      .filter(t => t.category && CATEGORY_INFO[t.category]) // Filter out invalid categories
-      .map(t => ({
-        id: t.id,
-        description: t.description,
-        counterparty: t.counterparty,
-        amount: t.amount,
-        currentCategory: t.category,
-        currentCategoryLabel: CATEGORY_INFO[t.category].labelDe,
-      }));
+    const transactionList = transactions.map(t => ({
+      id: t.id,
+      description: t.description,
+      counterparty: t.counterparty,
+      amount: t.amount,
+      currentCategory: t.category,
+      currentCategoryLabel: t.category && CATEGORY_INFO[t.category] 
+        ? CATEGORY_INFO[t.category].labelDe 
+        : 'Unbekannt',
+    }));
 
     return `Du bist ein Finanzexperte für einen Hunde-Rettungsverein. 
 Überprüfe die folgenden Transaktionen und ihre Kategorisierungen.
