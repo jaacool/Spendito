@@ -318,13 +318,20 @@ router.post('/sync/:userId', async (req, res) => {
     console.log(`[PayPal] Formatted Start: ${start}`);
     console.log(`[PayPal] Formatted End: ${endFormatted}`);
 
-    // Get connection
-    const connection = db.prepare(`
+    // Get or create connection (auto-create if client has valid token)
+    let connection = db.prepare(`
       SELECT * FROM bank_connections WHERE user_id = ? AND bank_id = 'paypal'
     `).get(userId) as any;
 
     if (!connection) {
-      return res.status(400).json({ error: 'Keine PayPal-Verbindung gefunden' });
+      console.log('[PayPal] No connection found, creating new one...');
+      const connectionId = uuidv4();
+      db.prepare(`
+        INSERT INTO bank_connections (id, user_id, bank_id, bank_name, status, created_at)
+        VALUES (?, ?, 'paypal', 'PayPal', 'active', datetime('now'))
+      `).run(connectionId, userId);
+      connection = { id: connectionId };
+      console.log('[PayPal] Connection created:', connectionId);
     }
 
     // Get or create account
