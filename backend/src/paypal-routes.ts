@@ -204,8 +204,8 @@ router.get('/callback', async (req, res) => {
       // Create new connection
       const connectionId = uuidv4();
       db.prepare(`
-        INSERT INTO bank_connections (id, user_id, bank_id, bank_name, created_at, last_sync)
-        VALUES (?, ?, 'paypal', 'PayPal', datetime('now'), NULL)
+        INSERT INTO bank_connections (id, user_id, bank_id, bank_name, bank_url, login_name, created_at, last_sync)
+        VALUES (?, ?, 'paypal', 'PayPal', 'https://api-m.paypal.com', 'oauth', datetime('now'), NULL)
       `).run(connectionId, userId);
       console.log(`[PayPal] Created connection record for user ${userId}`);
     } else {
