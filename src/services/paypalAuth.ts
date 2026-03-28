@@ -197,11 +197,13 @@ class PayPalAuthService {
 
   /**
    * Sync PayPal transactions (requires valid token)
+   * Backend acts as proxy only - transactions are returned directly
    */
   async syncTransactions(startDate?: string, endDate?: string): Promise<{
     success: boolean;
     transactionsFound: number;
     transactionsAdded: number;
+    transactions?: any[];
   }> {
     const accessToken = await this.getValidToken();
     
@@ -209,6 +211,8 @@ class PayPalAuthService {
       throw new Error('Nicht verbunden - bitte zuerst anmelden');
     }
 
+    console.log('[PayPal Auth] Syncing via proxy - transactions will NOT be stored on server');
+    
     const response = await fetch(`${BACKEND_URL}/api/paypal/sync/${this.userId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -225,6 +229,8 @@ class PayPalAuthService {
       throw new Error(data.error || 'Sync failed');
     }
 
+    console.log(`[PayPal Auth] Received ${data.transactions?.length || 0} transactions from proxy`);
+    
     return data;
   }
 }

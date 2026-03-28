@@ -317,73 +317,28 @@ router.post('/sync/:userId', async (req, res) => {
     const start = startDate || new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000).toISOString().split('.')[0] + 'Z';
     const endFormatted = end.split('.')[0] + 'Z';
 
-    console.log(`[PayPal] Sync request for user ${userId}`);
-    console.log(`[PayPal] Date range: ${start} to ${endFormatted}`);
+    console.log(`[PayPal Proxy] Sync request for user ${userId}`);
+    console.log(`[PayPal Proxy] Date range: ${start} to ${endFormatted}`);
+    console.log(`[PayPal Proxy] Acting as pure proxy - NO data will be stored`);
 
-    // Get or create connection (minimal data, no credentials stored)
-    let connection = db.prepare(`
-      SELECT * FROM bank_connections WHERE user_id = ? AND bank_id = 'paypal'
-    `).get(userId) as any;
-
-    if (!connection) {
-      // Create minimal connection record (no credentials)
-      const connectionId = uuidv4();
-      db.prepare(`
-        INSERT INTO bank_connections (id, user_id, bank_id, bank_name, bank_url, login_name, created_at, last_sync)
-        VALUES (?, ?, 'paypal', 'PayPal', 'https://api-m.paypal.com', 'oauth', datetime('now'), NULL)
-      `).run(connectionId, userId);
-      connection = { id: connectionId };
-      console.log(`[PayPal] Created minimal connection record (no credentials stored)`);
-    }
-
-    // Get or create account
-    let account = db.prepare(`
-      SELECT * FROM bank_accounts WHERE connection_id = ? AND account_number = 'paypal'
-    `).get(connection.id) as any;
-
-    if (!account) {
-      const accountId = uuidv4();
-      db.prepare(`
-        INSERT INTO bank_accounts (id, connection_id, account_number, account_name, currency)
-        VALUES (?, ?, 'paypal', 'PayPal Konto', 'EUR')
-      `).run(accountId, connection.id);
-      account = { id: accountId };
-    }
-
-    // Fetch transactions
-    console.log(`[PayPal] Fetching transactions for user ${userId} from ${start} to ${endFormatted}`);
-    const transactions = await fetchUserTransactions(accessToken, start, endFormatted);
-    console.log(`[PayPal] Found ${transactions.length} total transactions`);
+    // Fetch transactions from PayPal API
+    const rawTransactions = await fetchUserTransactions(accessToken, start, endFormatted);
+    console.log(`[PayPal Proxy] Fetched ${rawTransactions.length} transactions from PayPal`);
     
-    // Log the structure of the first transaction to debug
-    if (transactions.length > 0) {
-      console.log('[PayPal] First transaction sample:', JSON.stringify(transactions[0], null, 2));
-    } else {
-      console.log('[PayPal] No transactions found in the specified time range.');
-    }
-
-    // Store transactions
-    const stmt = db.prepare(`
-      INSERT OR IGNORE INTO transactions 
-      (id, account_id, external_id, date, value_date, amount, currency, 
-       counterparty_name, counterparty_iban, description, booking_text)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    let added = 0;
-    for (const tx of transactions) {
+    // Transform transactions for client (but don't store them)
+    const transformedTransactions = [];
+    
+    for (const tx of rawTransactions) {
       const txInfo = tx.transaction_info || {};
       const payerInfo = tx.payer_info || {};
       
       const eventCode = txInfo.transaction_event_code || '';
-      console.log(`[PayPal] Processing TX: ${txInfo.transaction_id}, Code: ${eventCode}, Amount: ${txInfo.transaction_amount?.value}`);
 
+      // Skip currency conversions
       if (eventCode.startsWith('T11') || eventCode.startsWith('T12')) {
-        console.log(`[PayPal] Skipping currency conversion TX: ${txInfo.transaction_id}`);
-        continue; // Skip currency conversions
+        continue;
       }
 
-      const id = uuidv4();
       const externalId = txInfo.transaction_id || `pp_${Date.now()}_${Math.random()}`;
       const date = txInfo.transaction_initiation_date || txInfo.transaction_updated_date;
       const amount = parseFloat(txInfo.transaction_amount?.value || '0');
@@ -394,13 +349,10 @@ router.post('/sync/:userId', async (req, res) => {
         || txInfo.payee_info?.payee_name?.alternate_full_name
         || 'PayPal';
       
-      // Build a meaningful description - PayPal often doesn't provide transaction_subject
-      let description = txInfo.transaction_subject 
-        || txInfo.transaction_note;
+      // Build description
+      let description = txInfo.transaction_subject || txInfo.transaction_note;
       
-      // If no description, try to build one from available info
       if (!description || description === eventCode) {
-        // Map common PayPal event codes to German descriptions
         const eventCodeDescriptions: Record<string, string> = {
           'T0000': 'PayPal Zahlung',
           'T0001': 'PayPal Zahlung erhalten',
@@ -438,39 +390,38 @@ router.post('/sync/:userId', async (req, res) => {
           'T9900': 'PayPal Allgemein',
         };
         
-        // Try to find a matching description for the event code prefix
         const codePrefix = eventCode.substring(0, 5);
         description = eventCodeDescriptions[codePrefix] 
           || eventCodeDescriptions[eventCode]
           || (counterpartyName !== 'PayPal' ? `PayPal: ${counterpartyName}` : `PayPal Transaktion`);
       }
 
-      const result = stmt.run(
-        id,
-        account.id,
-        externalId,
-        date ? date.split('T')[0] : new Date().toISOString().split('T')[0],
-        date ? date.split('T')[0] : new Date().toISOString().split('T')[0],
+      // Create transaction object for client
+      transformedTransactions.push({
+        id: externalId,
+        external_id: externalId,
+        date: date ? date.split('T')[0] : new Date().toISOString().split('T')[0],
+        value_date: date ? date.split('T')[0] : new Date().toISOString().split('T')[0],
         amount,
         currency,
-        counterpartyName,
-        payerInfo.email_address || null,
+        counterparty_name: counterpartyName,
+        counterparty_iban: payerInfo.email_address || null,
         description,
-        `PayPal: ${eventCode}`
-      );
-
-      if (result.changes > 0) added++;
+        booking_text: `PayPal: ${eventCode}`,
+        bank_id: 'paypal',
+        account_number: 'paypal',
+      });
     }
 
-    // Update last sync
-    db.prepare(`
-      UPDATE bank_connections SET last_sync = datetime('now') WHERE id = ?
-    `).run(connection.id);
+    console.log(`[PayPal Proxy] Transformed ${transformedTransactions.length} transactions`);
+    console.log(`[PayPal Proxy] Sending to client - NO storage on server`);
 
+    // Return transactions directly to client - NO DATABASE STORAGE
     res.json({
       success: true,
-      transactionsFound: transactions.length,
-      transactionsAdded: added,
+      transactionsFound: rawTransactions.length,
+      transactionsAdded: transformedTransactions.length,
+      transactions: transformedTransactions,
     });
   } catch (error: any) {
     console.error('[PayPal] Sync error:', error);
