@@ -327,30 +327,40 @@ class StorageService {
    */
   async cleanupWronglyAssignedTransactions(): Promise<number> {
     let fixCount = 0;
-    console.log(`[Storage] Starting deep cleanup scan for ${this.transactions.length} transactions...`);
+    console.log(`[Storage] Starting POWER cleanup scan for ${this.transactions.length} transactions...`);
     
-    this.transactions = this.transactions.map(t => {
+    this.transactions = this.transactions.map((t, index) => {
       const rawT = t as any;
       
-      // Technical detection: PayPal API always sets these fields, Volksbank CSV never does.
+      // DEBUG: Log the first few Volksbank transactions to see their actual structure
+      if (t.sourceAccount === 'volksbank' && fixCount < 10) {
+        console.log(`[Storage] VB-DATA-SAMPLE:`, JSON.stringify({
+          desc: t.description,
+          source: t.sourceAccount,
+          bank_id: rawT.bank_id,
+          acc: rawT.account_number,
+          ext: t.externalId
+        }));
+      }
+
+      // Radical Detection: If it looks like PayPal, it IS PayPal
+      const desc = (t.description || '').toLowerCase();
+      const counterparty = (t.counterparty || '').toLowerCase();
+      
+      const isPayPalText = 
+        desc.includes('paypal') || 
+        desc.includes('guthaben-transfer') ||
+        desc.includes('zahlung') || // Very broad, but we check with counterparty
+        counterparty.includes('paypal');
+
       const hasPayPalTechnicalFields = 
         rawT.bank_id === 'paypal' || 
         rawT.account_number === 'paypal' ||
-        (t.externalId && (t.externalId.startsWith('pp_') || /^[A-Z0-9]{12,}$/.test(t.externalId))); // PayPal IDs are long alphanumeric
-      
-      // Secondary text detection (only as fallback)
-      const desc = (t.description || '').toLowerCase();
-      const isPayPalText = desc.includes('paypal') || desc.includes('guthaben-transfer');
+        (t.externalId && (t.externalId.startsWith('pp_') || t.externalId.length > 15));
 
       if (t.sourceAccount === 'volksbank' && (hasPayPalTechnicalFields || isPayPalText)) {
         fixCount++;
-        console.log(`[Storage] FIXING PayPal Transaction:`, {
-          description: t.description,
-          amount: t.amount,
-          id: t.id,
-          externalId: t.externalId,
-          bank_id: rawT.bank_id
-        });
+        console.log(`[Storage] POWER-FIX: Moving "${t.description}" to PayPal`);
         return { ...t, sourceAccount: 'paypal' as SourceAccount };
       }
       return t;
@@ -358,9 +368,9 @@ class StorageService {
 
     if (fixCount > 0) {
       await this.saveTransactions();
-      console.log(`[Storage] Success: Cleaned up ${fixCount} PayPal transactions.`);
+      console.log(`[Storage] Power-Cleanup Success: ${fixCount} transactions moved.`);
     } else {
-      console.log(`[Storage] Deep scan finished. No misassigned transactions found.`);
+      console.log(`[Storage] Power-Cleanup finished. No misassigned transactions found.`);
     }
     return fixCount;
   }
