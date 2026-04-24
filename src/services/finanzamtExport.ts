@@ -294,9 +294,47 @@ export class FinanzamtExportService {
     </div>
   </div>
 
+  <!-- Kontostände -->
+  ${yearSummary.accountSummaries && yearSummary.accountSummaries.length > 0 ? `
+  <div class="section">
+    <h2 class="section-title">2. Kontostände & Saldenentwicklung</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Konto</th>
+          <th style="text-align: right;">Stand 01.01.</th>
+          <th style="text-align: right;">Veränderung</th>
+          <th style="text-align: right;">Stand 31.12.</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${yearSummary.accountSummaries.map(acc => `
+          <tr>
+            <td><strong>${acc.account === 'volksbank' ? 'Volksbank' : 'PayPal'}</strong></td>
+            <td class="amount">${this.formatCurrency(acc.startBalance)}</td>
+            <td class="amount ${acc.change >= 0 ? 'positive' : 'negative'}">
+              ${acc.change >= 0 ? '+' : ''}${this.formatCurrency(acc.change)}
+            </td>
+            <td class="amount" style="font-weight: bold;">${this.formatCurrency(acc.endBalance)}</td>
+          </tr>
+        `).join('')}
+        <tr class="total-row">
+          <td>Gesamt</td>
+          <td class="amount">${this.formatCurrency(yearSummary.accountSummaries.reduce((sum, acc) => sum + acc.startBalance, 0))}</td>
+          <td class="amount ${yearSummary.accountSummaries.reduce((sum, acc) => sum + acc.change, 0) >= 0 ? 'positive' : 'negative'}">
+            ${yearSummary.accountSummaries.reduce((sum, acc) => sum + acc.change, 0) >= 0 ? '+' : ''}
+            ${this.formatCurrency(yearSummary.accountSummaries.reduce((sum, acc) => sum + acc.change, 0))}
+          </td>
+          <td class="amount">${this.formatCurrency(yearSummary.accountSummaries.reduce((sum, acc) => sum + acc.endBalance, 0))}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  ` : ''}
+
   <!-- Einnahmen nach Kategorien -->
   <div class="section">
-    <h2 class="section-title">2. Einnahmen nach Kategorien</h2>
+    <h2 class="section-title">${yearSummary.accountSummaries ? '3' : '2'}. Einnahmen nach Kategorien</h2>
     <table>
       <thead>
         <tr>
@@ -331,7 +369,7 @@ export class FinanzamtExportService {
 
   <!-- Ausgaben nach Kategorien -->
   <div class="section">
-    <h2 class="section-title">3. Ausgaben nach Kategorien</h2>
+    <h2 class="section-title">${yearSummary.accountSummaries ? '4' : '3'}. Ausgaben nach Kategorien</h2>
     <table>
       <thead>
         <tr>
@@ -366,7 +404,7 @@ export class FinanzamtExportService {
 
   <!-- Detaillierte Transaktionsliste -->
   <div class="section">
-    <h2 class="section-title">4. Detaillierte Transaktionsliste</h2>
+    <h2 class="section-title">${yearSummary.accountSummaries ? '5' : '4'}. Detaillierte Transaktionsliste</h2>
     ${this.generateTransactionTables(transactions)}
   </div>
 

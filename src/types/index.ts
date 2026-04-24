@@ -97,6 +97,19 @@ export interface YearSummary {
   balance: number;
   incomeByCategory: CategorySummary[];
   expenseByCategory: CategorySummary[];
+  accountSummaries?: AccountYearSummary[];
+}
+
+export interface AccountYearSummary {
+  account: SourceAccount;
+  startBalance: number;
+  endBalance: number;
+  change: number;
+}
+
+export interface ReferenceBalance {
+  amount: number;
+  date: string; // ISO date string
 }
 
 // Category metadata for display

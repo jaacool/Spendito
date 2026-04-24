@@ -23,6 +23,8 @@ interface AppContextType {
   confirmTransaction: (id: string) => Promise<void>;
   refreshData: () => Promise<void>;
   loadMockData: () => Promise<void>;
+  setReferenceBalance: (account: 'volksbank' | 'paypal', amount: number) => Promise<void>;
+  cleanupTransactions: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -181,6 +183,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function setReferenceBalance(account: 'volksbank' | 'paypal', amount: number) {
+    const today = new Date().toISOString();
+    await storageService.setReferenceBalance(account, amount, today);
+    updateYearData(selectedYear);
+  }
+
+  async function cleanupTransactions() {
+    const count = await storageService.cleanupWronglyAssignedTransactions();
+    if (count > 0) {
+      updateYearData(selectedYear);
+    }
+  }
+
   return (
     <AppContext.Provider
       value={{
@@ -198,6 +213,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         confirmTransaction,
         refreshData,
         loadMockData,
+        setReferenceBalance,
+        cleanupTransactions,
       }}
     >
       {children}

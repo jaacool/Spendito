@@ -35,7 +35,7 @@ interface PayPalStatus {
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { uiScale, setUIScale } = useSettings();
-  const { refreshData } = useApp();
+  const { refreshData, setReferenceBalance, cleanupTransactions } = useApp();
   const [connectionStatus, setConnectionStatus] = useState<BankConnectionStatus | null>(null);
   const [paypalStatus, setPaypalStatus] = useState<PayPalStatus | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -65,12 +65,36 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const blinkAnim = useRef(new Animated.Value(1)).current;
   const alarmAudioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Reference balance state
+  const [volksbankBalance, setVolksbankBalance] = useState('');
+  const [paypalBalance, setPaypalBalance] = useState('');
+
   useEffect(() => {
     if (isOpen) {
       loadConnectionStatus();
       loadPayPalStatus();
+      loadReferenceBalances();
+      cleanupTransactions(); // Run cleanup when opening settings
     }
   }, [isOpen]);
+
+  const loadReferenceBalances = async () => {
+    const vb = storageService.getReferenceBalance('volksbank');
+    const pp = storageService.getReferenceBalance('paypal');
+    if (vb) setVolksbankBalance(vb.amount.toString());
+    if (pp) setPaypalBalance(pp.amount.toString());
+  };
+
+  const handleSaveBalance = async (account: 'volksbank' | 'paypal') => {
+    const val = account === 'volksbank' ? volksbankBalance : paypalBalance;
+    const amount = parseFloat(val.replace(',', '.'));
+    if (isNaN(amount)) {
+      Alert.alert('Fehler', 'Bitte gib einen gültigen Betrag ein.');
+      return;
+    }
+    await setReferenceBalance(account, amount);
+    Alert.alert('Erfolg', 'Kontostand wurde gespeichert.');
+  };
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -688,6 +712,55 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </View>
 
           <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+              {/* Reference Balances Section */}
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Wallet size={16} color="#6b7280" />
+                  <Text style={styles.sectionTitle}>Aktuelle Kontostände (für Export)</Text>
+                </View>
+                
+                <View style={styles.balanceInputContainer}>
+                  <View style={styles.balanceInputRow}>
+                    <Text style={styles.balanceInputLabel}>Volksbank:</Text>
+                    <TextInput
+                      style={styles.balanceInput}
+                      value={volksbankBalance}
+                      onChangeText={setVolksbankBalance}
+                      placeholder="0,00"
+                      keyboardType="numeric"
+                    />
+                    <Text style={styles.currencyLabel}>€</Text>
+                    <TouchableOpacity 
+                      style={styles.saveBalanceButton}
+                      onPress={() => handleSaveBalance('volksbank')}
+                    >
+                      <CheckCircle2 size={16} color="#22c55e" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.balanceInputRow}>
+                    <Text style={styles.balanceInputLabel}>PayPal:</Text>
+                    <TextInput
+                      style={styles.balanceInput}
+                      value={paypalBalance}
+                      onChangeText={setPaypalBalance}
+                      placeholder="0,00"
+                      keyboardType="numeric"
+                    />
+                    <Text style={styles.currencyLabel}>€</Text>
+                    <TouchableOpacity 
+                      style={styles.saveBalanceButton}
+                      onPress={() => handleSaveBalance('paypal')}
+                    >
+                      <CheckCircle2 size={16} color="#22c55e" />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.balanceHelpText}>
+                    Gib hier den aktuellen Stand deines Kontos an. Die App berechnet daraus die historischen Stände für den Steuer-Export.
+                  </Text>
+                </View>
+              </View>
+
               {/* Backup & Restore Section */}
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
@@ -1712,5 +1785,50 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#ffffff',
     letterSpacing: 1,
+  },
+  // Balance styles
+  balanceInputContainer: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 10,
+    padding: 12,
+  },
+  balanceInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  balanceInputLabel: {
+    width: 80,
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  balanceInput: {
+    flex: 1,
+    height: 36,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    fontSize: 14,
+    color: '#1f2937',
+    textAlign: 'right',
+  },
+  currencyLabel: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#6b7280',
+    width: 12,
+  },
+  saveBalanceButton: {
+    marginLeft: 12,
+    padding: 4,
+  },
+  balanceHelpText: {
+    fontSize: 11,
+    color: '#9ca3af',
+    marginTop: 4,
+    fontStyle: 'italic',
   },
 });
