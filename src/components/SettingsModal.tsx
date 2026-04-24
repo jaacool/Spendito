@@ -1,6 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Modal, Pressable, ActivityIndicator, ScrollView, TextInput, Alert, Linking, TouchableOpacity, Platform, Animated } from 'react-native';
-import { X, Type, Minus, Circle, Plus, Building2, Wallet, Link, Unlink, CheckCircle2, RefreshCw, Eye, EyeOff, ExternalLink, Trash2, Upload, FileText, Download, Share2 } from 'lucide-react-native';
+import { 
+  X, 
+  Type, 
+  Minus, 
+  Circle, 
+  Plus, 
+  Building2, 
+  Wallet, 
+  Link, 
+  Unlink, 
+  CheckCircle2, 
+  RefreshCw, 
+  Eye, 
+  EyeOff, 
+  ExternalLink, 
+  Trash2, 
+  Upload, 
+  FileText, 
+  Download, 
+  Share2,
+  Database
+} from 'lucide-react-native';
 import { useSettings, UIScale } from '../context/SettingsContext';
 import { backendApiService } from '../services/backendApi';
 import { storageService } from '../services/storage';
@@ -35,7 +56,7 @@ interface PayPalStatus {
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { uiScale, setUIScale } = useSettings();
-  const { refreshData, setReferenceBalance, cleanupTransactions } = useApp();
+  const { refreshData, setReferenceBalance, cleanupTransactions, exportDatabase } = useApp();
   const [connectionStatus, setConnectionStatus] = useState<BankConnectionStatus | null>(null);
   const [paypalStatus, setPaypalStatus] = useState<PayPalStatus | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -561,7 +582,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
-  const handleExportBackup = async () => {
+  const handleExportData = async () => {
     setIsBackupLoading(true);
     try {
       await backupService.exportData();
@@ -572,41 +593,20 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
-  const handleImportBackup = async () => {
-    console.log('[Settings] handleImportBackup called');
+  const handleImportData = async () => {
     setIsBackupLoading(true);
     try {
-      console.log('[Settings] Calling backupService.importData()...');
       const result = await backupService.importData();
-      console.log('[Settings] Import result:', result);
       if (result.success) {
-        console.log('[Settings] Import successful, showing alert');
-        if (typeof window !== 'undefined' && window.alert) {
-          window.alert('Import erfolgreich: ' + result.message);
-          refreshData();
-        } else {
-          Alert.alert('Import erfolgreich', result.message, [
-            { text: 'OK', onPress: () => refreshData() }
-          ]);
-        }
+        Alert.alert('Erfolg', result.message);
+        await refreshData();
       } else {
-        console.log('[Settings] Import not successful:', result.message);
-        if (typeof window !== 'undefined' && window.alert) {
-          window.alert('Import: ' + result.message);
-        } else {
-          Alert.alert('Import', result.message);
-        }
+        Alert.alert('Fehler', result.message);
       }
     } catch (error: any) {
-      console.error('[Settings] Import error:', error);
-      if (typeof window !== 'undefined' && window.alert) {
-        window.alert('Import fehlgeschlagen: ' + error.message);
-      } else {
-        Alert.alert('Import fehlgeschlagen', error.message);
-      }
+      Alert.alert('Fehler', error.message);
     } finally {
       setIsBackupLoading(false);
-      console.log('[Settings] handleImportBackup finished');
     }
   };
 
@@ -771,21 +771,36 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <View style={styles.backupButtonsContainer}>
                     <TouchableOpacity 
                       style={[styles.connectButton, { backgroundColor: '#6366f115', marginRight: 8, cursor: 'pointer' } as any]}
-                      onPress={handleExportBackup}
+                      onPress={handleExportData}
                       activeOpacity={0.7}
-                      disabled={isBackupLoading}
                     >
                       <Download size={12} color="#6366f1" />
                       <Text style={[styles.connectButtonText, { color: '#6366f1' }]}>Export</Text>
                     </TouchableOpacity>
+
                     <TouchableOpacity 
-                      style={[styles.connectButton, { backgroundColor: '#6366f115', cursor: 'pointer' } as any]}
-                      onPress={handleImportBackup}
+                      style={[styles.connectButton, { backgroundColor: '#8b5cf615', marginRight: 8, cursor: 'pointer' } as any]}
+                      onPress={handleImportData}
                       activeOpacity={0.7}
                       disabled={isBackupLoading}
                     >
-                      <Upload size={12} color="#6366f1" />
-                      <Text style={[styles.connectButtonText, { color: '#6366f1' }]}>Import</Text>
+                      {isBackupLoading ? (
+                        <ActivityIndicator size="small" color="#8b5cf6" />
+                      ) : (
+                        <>
+                          <Upload size={12} color="#8b5cf6" />
+                          <Text style={[styles.connectButtonText, { color: '#8b5cf6' }]}>Import</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+
+                    <TouchableOpacity 
+                      style={[styles.connectButton, { backgroundColor: '#f59e0b15', cursor: 'pointer' } as any]}
+                      onPress={exportDatabase}
+                      activeOpacity={0.7}
+                    >
+                      <Database size={12} color="#f59e0b" />
+                      <Text style={[styles.connectButtonText, { color: '#f59e0b' }]}>DB Export</Text>
                     </TouchableOpacity>
                 </View>
               </View>

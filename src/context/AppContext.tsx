@@ -25,6 +25,7 @@ interface AppContextType {
   loadMockData: () => Promise<void>;
   setReferenceBalance: (account: 'volksbank' | 'paypal', amount: number) => Promise<void>;
   cleanupTransactions: () => Promise<void>;
+  exportDatabase: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -196,6 +197,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function exportDatabase() {
+    const data = await storageService.getTransactions();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `spendito_db_export_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <AppContext.Provider
       value={{
@@ -215,6 +229,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         loadMockData,
         setReferenceBalance,
         cleanupTransactions,
+        exportDatabase,
       }}
     >
       {children}
