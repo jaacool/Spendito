@@ -330,8 +330,13 @@ class StorageService {
     this.transactions = this.transactions.map(t => {
       // Detection: If source is volksbank but description/booking_text indicates PayPal API source
       const rawT = t as any;
-      if (t.sourceAccount === 'volksbank' && 
-          (rawT.bank_id === 'paypal' || rawT.account_number === 'paypal' || t.description.startsWith('PayPal: T'))) {
+      const isPayPalSource = 
+        rawT.bank_id === 'paypal' || 
+        rawT.account_number === 'paypal' || 
+        t.description.startsWith('PayPal: T') ||
+        t.description.includes('Guthaben-Transfer');
+      
+      if (t.sourceAccount === 'volksbank' && isPayPalSource) {
         fixCount++;
         return { ...t, sourceAccount: 'paypal' as SourceAccount };
       }
