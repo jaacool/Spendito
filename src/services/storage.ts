@@ -327,17 +327,22 @@ class StorageService {
    */
   async cleanupWronglyAssignedTransactions(): Promise<number> {
     let fixCount = 0;
+    console.log(`[Storage] Starting cleanup scan for ${this.transactions.length} transactions...`);
+    
     this.transactions = this.transactions.map(t => {
-      // Detection: If source is volksbank but description/booking_text indicates PayPal API source
-      const rawT = t as any;
+      // Detection: If source is volksbank but description indicates PayPal source
+      const desc = (t.description || '').toLowerCase();
+      const counterparty = (t.counterparty || '').toLowerCase();
+      
       const isPayPalSource = 
-        rawT.bank_id === 'paypal' || 
-        rawT.account_number === 'paypal' || 
-        t.description.startsWith('PayPal: T') ||
-        t.description.includes('Guthaben-Transfer');
+        desc.startsWith('paypal:') || 
+        desc.includes('guthaben-transfer') ||
+        desc.startsWith('paypal zahlung') ||
+        counterparty === 'paypal';
       
       if (t.sourceAccount === 'volksbank' && isPayPalSource) {
         fixCount++;
+        console.log(`[Storage] FIXING: Moving transaction "${t.description}" (${t.amount}€) from volksbank to paypal`);
         return { ...t, sourceAccount: 'paypal' as SourceAccount };
       }
       return t;
@@ -346,6 +351,8 @@ class StorageService {
     if (fixCount > 0) {
       await this.saveTransactions();
       console.log(`[Storage] Cleaned up ${fixCount} wrongly assigned PayPal transactions`);
+    } else {
+      console.log(`[Storage] Cleanup scan finished. No transactions needed fixing.`);
     }
     return fixCount;
   }
