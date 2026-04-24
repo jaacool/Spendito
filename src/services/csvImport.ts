@@ -220,13 +220,6 @@ export async function importVolksbankCSV(
       }
       
       const isPayPal = isPayPalTransfer(row);
-      const paypalRef = isPayPal ? extractPayPalReference(row[CSV_COLUMNS.PURPOSE] || '') : null;
-      
-      // Skip PayPal transfers if option is set
-      if (isPayPal && skipPayPalTransfers) {
-        result.skippedPayPal++;
-        continue;
-      }
       
       // Generate external ID
       const externalId = generateExternalId(row);
@@ -248,8 +241,6 @@ export async function importVolksbankCSV(
       const description = purpose || bookingText || counterparty;
       
       // Categorize the transaction
-      // PayPal transfers from bank are marked as transfer AND as duplicate
-      // because the real transaction is in PayPal, not in the bank statement
       let category: any;
       let confidence: number;
       let txType: 'income' | 'expense' | 'transfer';
@@ -257,18 +248,19 @@ export async function importVolksbankCSV(
       let duplicateReason: string | undefined;
       
       if (isPayPal) {
-        // PayPal bank transfers are internal movements
-        // They should be marked as duplicates because the real payment is in PayPal
+        // PayPal bank transfers are internal movements (transfers)
+        // We MUST import them to keep the bank balance correct.
+        // But we mark them as 'duplicate' in terms of Einnahmen/Ausgaben 
+        // because the REAL expense (e.g. for Dog Food) is already in the PayPal list.
         category = 'transfer';
         confidence = 0.95;
         txType = 'transfer';
         isDuplicate = true;
         duplicateReason = 'PayPal-Überweisung (echte Zahlung in PayPal)';
       } else {
-        const result = categorizationService.categorize(description, amount, counterparty);
-        category = result.category;
-        confidence = result.confidence;
-        // Check if categorization detected a transfer
+        const catResult = categorizationService.categorize(description, amount, counterparty);
+        category = catResult.category;
+        confidence = catResult.confidence;
         txType = category === 'transfer' ? 'transfer' : (amount >= 0 ? 'income' : 'expense');
       }
       
@@ -284,10 +276,8 @@ export async function importVolksbankCSV(
         confidence,
         sourceAccount: 'volksbank',
         externalId,
-        // Mark PayPal transfers as duplicates
+        // Mark PayPal transfers as duplicates for statistics
         ...(isDuplicate ? { isDuplicate, duplicateReason } : {}),
-        // Mark PayPal transfers specially
-        ...(isPayPal && markPayPalAsLinked && paypalRef ? { linkedPayPalRef: paypalRef } : {}),
       };
       
       result.transactions.push(transaction);

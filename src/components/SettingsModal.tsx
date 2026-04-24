@@ -533,11 +533,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       // Get existing transactions for duplicate detection
       const existingTransactions = await storageService.getTransactions();
       
-      // Import CSV
+      // Import CSV - we now import everything but mark PayPal as transfers
       const result = await csvImportService.importVolksbankCSV(
         content,
         existingTransactions,
-        { skipPayPalTransfers: true }
+        { skipPayPalTransfers: false } // Changed to false to ensure we get all records for balance calculation
       );
       
       console.log('[CSV] Import result:', result);
