@@ -334,11 +334,15 @@ class StorageService {
       const desc = (t.description || '').toLowerCase();
       const counterparty = (t.counterparty || '').toLowerCase();
       
+      // DEBUG: Log ALL Volksbank transactions to see their exact description
+      if (t.sourceAccount === 'volksbank') {
+        console.log(`[Storage] Analyzing VB Tx: "${t.description}" | Counterparty: "${t.counterparty}"`);
+      }
+
       const isPayPalSource = 
-        desc.startsWith('paypal:') || 
+        desc.includes('paypal') || 
         desc.includes('guthaben-transfer') ||
-        desc.startsWith('paypal zahlung') ||
-        counterparty === 'paypal';
+        counterparty.includes('paypal');
       
       if (t.sourceAccount === 'volksbank' && isPayPalSource) {
         fixCount++;
