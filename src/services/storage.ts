@@ -21,7 +21,25 @@ class StorageService {
       // Load local transactions
       const stored = await AsyncStorage.getItem(TRANSACTIONS_KEY);
       if (stored) {
-        this.transactions = JSON.parse(stored);
+        let loadedTransactions = JSON.parse(stored);
+        
+        // AUTO-FIX based on DB Export analysis:
+        // Ensure sourceAccount is set correctly based on technical fields bank_id/account_number
+        let needsSave = false;
+        loadedTransactions = loadedTransactions.map((t: any) => {
+          if ((t.bank_id === 'paypal' || t.account_number === 'paypal') && t.sourceAccount !== 'paypal') {
+            needsSave = true;
+            return { ...t, sourceAccount: 'paypal' };
+          }
+          return t;
+        });
+
+        this.transactions = loadedTransactions;
+        
+        if (needsSave) {
+          console.log('[Storage] Auto-corrected PayPal source assignments during initialization');
+          await this.saveTransactions();
+        }
       }
 
       // Load reference balances
