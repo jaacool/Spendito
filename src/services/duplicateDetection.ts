@@ -268,6 +268,10 @@ class DuplicateDetectionService {
       // We only link if we have high confidence or it's a clear PayPal pattern
       if (match.confidence >= CONFIG.mediumConfidence) {
         // Update Volksbank transaction with information from PayPal
+        const isPayPalCounterparty = paypalTx.counterparty === 'PayPal';
+        const displayMerchant = isPayPalCounterparty ? (paypalTx.originalPaymentInfo?.counterparty || paypalTx.counterparty) : paypalTx.counterparty;
+        const displayDescription = isPayPalCounterparty ? (paypalTx.originalPaymentInfo?.description || paypalTx.description) : paypalTx.description;
+
         updatedTransactions[volksbankIdx] = {
           ...volksbankTx,
           isDuplicate: true,
@@ -275,8 +279,8 @@ class DuplicateDetectionService {
           category: 'transfer',
           linkedTransactionId: paypalTx.id,
           duplicateReason: match.reason,
-          // Information Transfer: Keep original but prefix with merchant
-          description: `[PayPal: ${paypalTx.counterparty}] ${volksbankTx.description}`,
+          // Information Transfer: Clean formatting, avoid double "PayPal"
+          description: `[PayPal: ${displayMerchant}] ${displayDescription || volksbankTx.description}`,
         };
 
         // Mark PayPal transaction as "funded by bank" for UI

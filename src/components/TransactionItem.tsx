@@ -64,8 +64,8 @@ export function TransactionItem({ transaction, onCategoryChange, onConfirm }: Tr
           <View style={styles.content}>
             <View style={styles.descriptionRow}>
               {isLinked && (
-                <View style={[styles.linkBadge, isDuplicate ? styles.duplicateBadge : styles.activeLinkBadge]}>
-                  <ArrowLeftRight size={10} color={isDuplicate ? "#9ca3af" : "#6366f1"} />
+                <View style={[styles.linkBadge, isDuplicate ? styles.duplicateLinkBadge : styles.activeLinkBadge]}>
+                  <ArrowLeftRight size={10} color={isDuplicate ? "#6b7280" : "#6366f1"} />
                 </View>
               )}
               <Text style={[styles.description, isDuplicate && styles.duplicateText]} numberOfLines={1}>
@@ -267,6 +267,11 @@ const styles = StyleSheet.create({
   },
   activeLinkBadge: {
     backgroundColor: '#6366f115',
+  },
+  duplicateLinkBadge: {
+    backgroundColor: '#f3f4f6',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
   counterpartyRow: {
     flexDirection: 'row',
