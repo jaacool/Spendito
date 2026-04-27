@@ -25,13 +25,29 @@ class StorageService {
         let loadedTransactions = JSON.parse(stored);
         
         // AUTO-FIX based on DB Export analysis:
-        // Ensure sourceAccount is set correctly based on technical fields bank_id/account_number
+        // 1. Ensure real PayPal API transactions stay in 'paypal'
+        // 2. Ensure Volksbank bank transfers (even if linked to PayPal) stay in 'volksbank'
         let needsSave = false;
         loadedTransactions = loadedTransactions.map((t: any) => {
-          if ((t.bank_id === 'paypal' || t.account_number === 'paypal') && t.sourceAccount !== 'paypal') {
+          const rawT = t as any;
+          
+          // Detection: PayPal API transactions always have a specific ID format or bank_id field
+          const isRealPayPalApiTx = 
+            rawT.bank_id === 'paypal' || 
+            rawT.account_number === 'paypal' ||
+            (t.externalId && !t.externalId.startsWith('bank_'));
+
+          if (isRealPayPalApiTx && t.sourceAccount !== 'paypal') {
             needsSave = true;
             return { ...t, sourceAccount: 'paypal' };
           }
+          
+          if (!isRealPayPalApiTx && t.sourceAccount !== 'volksbank') {
+            // This was a Volksbank record wrongly moved to PayPal
+            needsSave = true;
+            return { ...t, sourceAccount: 'volksbank' };
+          }
+
           return t;
         });
 
@@ -353,40 +369,36 @@ class StorageService {
    */
   async cleanupWronglyAssignedTransactions(): Promise<number> {
     let fixCount = 0;
-    console.log(`[Storage] Starting deep cleanup scan for ${this.transactions.length} transactions...`);
+    console.log(`[Storage] Starting cleanup scan for ${this.transactions.length} transactions...`);
     
     this.transactions = this.transactions.map(t => {
       const rawT = t as any;
       
-      // Technical detection: PayPal API always sets these fields, Volksbank CSV never does.
-      const hasPayPalTechnicalFields = 
+      // Detection: PayPal API transactions always have a specific ID format or bank_id field
+      const isRealPayPalApiTx = 
         rawT.bank_id === 'paypal' || 
         rawT.account_number === 'paypal' ||
-        (t.externalId && (t.externalId.startsWith('pp_') || /^[A-Z0-9]{12,}$/.test(t.externalId))); // PayPal IDs are long alphanumeric
-      
-      // Secondary text detection (only as fallback)
-      const desc = (t.description || '').toLowerCase();
-      const isPayPalText = desc.includes('paypal') || desc.includes('guthaben-transfer');
+        (t.externalId && !t.externalId.startsWith('bank_') && !t.id.includes('-')); // Volksbank IDs use UUIDs with dashes
 
-      if (t.sourceAccount === 'volksbank' && (hasPayPalTechnicalFields || isPayPalText)) {
+      if (isRealPayPalApiTx && t.sourceAccount !== 'paypal') {
         fixCount++;
-        console.log(`[Storage] FIXING PayPal Transaction:`, {
-          description: t.description,
-          amount: t.amount,
-          id: t.id,
-          externalId: t.externalId,
-          bank_id: rawT.bank_id
-        });
-        return { ...t, sourceAccount: 'paypal' as SourceAccount };
+        return { ...t, sourceAccount: 'paypal' };
       }
+      
+      if (!isRealPayPalApiTx && t.sourceAccount !== 'volksbank') {
+        // This was a Volksbank record wrongly moved to PayPal
+        fixCount++;
+        return { ...t, sourceAccount: 'volksbank' };
+      }
+
       return t;
     });
 
     if (fixCount > 0) {
       await this.saveTransactions();
-      console.log(`[Storage] Success: Cleaned up ${fixCount} PayPal transactions.`);
+      console.log(`[Storage] Success: Cleaned up ${fixCount} transactions.`);
     } else {
-      console.log(`[Storage] Deep scan finished. No misassigned transactions found.`);
+      console.log(`[Storage] Cleanup scan finished. No misassigned transactions found.`);
     }
     return fixCount;
   }
