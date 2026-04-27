@@ -533,11 +533,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       // Get existing transactions for duplicate detection
       const existingTransactions = await storageService.getTransactions();
       
-      // Import CSV
+      // Import CSV - we now import everything but mark PayPal as transfers
       const result = await csvImportService.importVolksbankCSV(
         content,
         existingTransactions,
-        { skipPayPalTransfers: true }
+        {} // No options needed as skipPayPalTransfers was removed from service
       );
       
       console.log('[CSV] Import result:', result);
@@ -547,8 +547,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         const saveResult = await storageService.importTransactions(result.transactions);
         
         const message = `✓ ${saveResult.added} Transaktionen importiert\n` +
-          `${result.skippedPayPal} PayPal-Überweisungen übersprungen\n` +
-          `${result.skippedDuplicates + saveResult.duplicates} Duplikate übersprungen`;
+          `${saveResult.added > 0 ? (existingTransactions.length + saveResult.added - storageService.getUniqueTransactions().length) : 0} PayPal-Buchungen verknüpft\n` +
+          `${saveResult.duplicates} Duplikate übersprungen`;
         
         setCSVImportResult(message);
         

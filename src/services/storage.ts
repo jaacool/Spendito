@@ -264,6 +264,10 @@ class StorageService {
     };
   }
 
+  getUniqueTransactions(): Transaction[] {
+    return this.transactions.filter(t => !t.isDuplicate);
+  }
+
   // Import transactions from bank data
   async importTransactions(newTransactions: Transaction[]): Promise<{ added: number; duplicates: number }> {
     // Ensure we're initialized before importing
@@ -320,6 +324,7 @@ class StorageService {
             confidence,
             sourceAccount: 'paypal',
             externalId: tx.externalId || tx.id,
+            isGuthabenTransfer: rawTx.isGuthabenTransfer || false,
           };
         } else {
           finalTx = { ...tx, sourceAccount };
@@ -333,6 +338,9 @@ class StorageService {
     }
     
     if (addedCount > 0) {
+      // After importing, automatically run duplicate detection to link accounts
+      const duplicateDetectionService = new (require('./duplicateDetection').DuplicateDetectionService)();
+      this.transactions = duplicateDetectionService.markDuplicates(this.transactions);
       await this.saveTransactions();
     }
     

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal, TouchableOpacity } from 'react-native';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
-import { ChevronRight, Check, Building2, Wallet, Link2, CheckCircle2 } from 'lucide-react-native';
+import { ChevronRight, Check, Building2, Wallet, Link2, CheckCircle2, ArrowLeftRight } from 'lucide-react-native';
 import { Transaction, Category, CATEGORY_INFO, INCOME_CATEGORIES, EXPENSE_CATEGORIES, TRANSFER_CATEGORIES, ACCOUNT_INFO } from '../types';
 
 interface TransactionItemProps {
@@ -25,6 +25,7 @@ export function TransactionItem({ transaction, onCategoryChange, onConfirm }: Tr
   const isIncome = transaction.type === 'income';
   const isTransfer = transaction.type === 'transfer' || transaction.category === 'transfer';
   const isDuplicate = transaction.isDuplicate;
+  const isLinked = !!transaction.linkedTransactionId;
   
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('de-DE', {
@@ -65,7 +66,15 @@ export function TransactionItem({ transaction, onCategoryChange, onConfirm }: Tr
               <Text style={[styles.description, isDuplicate && styles.duplicateText]} numberOfLines={1}>
                 {transaction.description}
               </Text>
-              {isDuplicate && (
+              {isLinked && (
+                <View style={[styles.linkBadge, isDuplicate ? styles.duplicateBadge : styles.activeLinkBadge]}>
+                  <ArrowLeftRight size={10} color={isDuplicate ? "#9ca3af" : "#6366f1"} />
+                  <Text style={[styles.linkBadgeText, { color: isDuplicate ? "#9ca3af" : "#6366f1" }]}>
+                    {isDuplicate ? 'Verknüpft (Umb.)' : 'Verknüpft'}
+                  </Text>
+                </View>
+              )}
+              {isDuplicate && !isLinked && (
                 <View style={styles.duplicateBadge}>
                   <Link2 size={10} color="#9ca3af" />
                   <Text style={styles.duplicateBadgeText}>Duplikat</Text>
@@ -248,6 +257,21 @@ const styles = StyleSheet.create({
     fontSize: 8,
     color: '#9ca3af',
     fontWeight: '500',
+  },
+  linkBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  activeLinkBadge: {
+    backgroundColor: '#6366f115',
+  },
+  linkBadgeText: {
+    fontSize: 8,
+    fontWeight: '600',
   },
   counterparty: {
     fontSize: 11,

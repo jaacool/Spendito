@@ -57,7 +57,6 @@ export interface CSVImportResult {
 }
 
 export interface CSVParseOptions {
-  skipPayPalTransfers?: boolean; // Skip PayPal bank transfers (default: false - now categorized as transfer)
   markPayPalAsLinked?: boolean;  // Mark PayPal transfers as linked (default: true)
 }
 
@@ -173,7 +172,7 @@ export async function importVolksbankCSV(
   existingTransactions: Transaction[] = [],
   options: CSVParseOptions = {}
 ): Promise<CSVImportResult> {
-  const { skipPayPalTransfers = false, markPayPalAsLinked = true } = options;
+  const { markPayPalAsLinked = true } = options;
   
   await categorizationService.initialize();
   
@@ -206,13 +205,6 @@ export async function importVolksbankCSV(
         .map(t => t.externalId)
     );
     
-    // Also create a set of existing PayPal references
-    const existingPayPalRefs = new Set(
-      existingTransactions
-        .filter(t => t.sourceAccount === 'paypal' && t.externalId)
-        .map(t => t.externalId)
-    );
-    
     for (const row of dataRows) {
       if (row.length < 12) {
         result.errors.push(`Zeile übersprungen: Nicht genug Spalten (${row.length})`);
@@ -221,12 +213,6 @@ export async function importVolksbankCSV(
       
       const isPayPal = isPayPalTransfer(row);
       const paypalRef = isPayPal ? extractPayPalReference(row[CSV_COLUMNS.PURPOSE] || '') : null;
-      
-      // Skip PayPal transfers if option is set
-      if (isPayPal && skipPayPalTransfers) {
-        result.skippedPayPal++;
-        continue;
-      }
       
       // Generate external ID
       const externalId = generateExternalId(row);
@@ -248,26 +234,22 @@ export async function importVolksbankCSV(
       const description = purpose || bookingText || counterparty;
       
       // Categorize the transaction
-      // PayPal transfers from bank are marked as transfer AND as duplicate
-      // because the real transaction is in PayPal, not in the bank statement
       let category: any;
       let confidence: number;
       let txType: 'income' | 'expense' | 'transfer';
-      let isDuplicate = false;
-      let duplicateReason: string | undefined;
       
       if (isPayPal) {
         // PayPal bank transfers are internal movements
-        // They should be marked as duplicates because the real payment is in PayPal
+        // They are now ALWAYS imported to keep the bank balance correct.
+        // We categorize them as transfer. The duplicateDetectionService will 
+        // handle the link to the actual PayPal transaction later.
         category = 'transfer';
         confidence = 0.95;
         txType = 'transfer';
-        isDuplicate = true;
-        duplicateReason = 'PayPal-Überweisung (echte Zahlung in PayPal)';
       } else {
-        const result = categorizationService.categorize(description, amount, counterparty);
-        category = result.category;
-        confidence = result.confidence;
+        const catResult = categorizationService.categorize(description, amount, counterparty);
+        category = catResult.category;
+        confidence = catResult.confidence;
         // Check if categorization detected a transfer
         txType = category === 'transfer' ? 'transfer' : (amount >= 0 ? 'income' : 'expense');
       }
@@ -284,8 +266,6 @@ export async function importVolksbankCSV(
         confidence,
         sourceAccount: 'volksbank',
         externalId,
-        // Mark PayPal transfers as duplicates
-        ...(isDuplicate ? { isDuplicate, duplicateReason } : {}),
         // Mark PayPal transfers specially
         ...(isPayPal && markPayPalAsLinked && paypalRef ? { linkedPayPalRef: paypalRef } : {}),
       };

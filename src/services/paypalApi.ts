@@ -195,12 +195,18 @@ class PayPalApiService {
     // Skip pending or denied transactions
     if (info.transaction_status !== 'S') return null;
 
-    // Skip internal transfers
-    const skipCodes = ['T0400', 'T0401', 'T0500', 'T0501']; // Transfer codes
-    if (skipCodes.includes(info.transaction_event_code)) return null;
-
     const amount = parseFloat(info.transaction_amount.value);
     const isExpense = amount < 0;
+
+    // PayPal event codes:
+    // T00xx: Payments
+    // T03xx: General Funding (Guthaben-Transfer)
+    // T04xx/T05xx: Internal Transfers
+    
+    // We import internal transfers now to keep the balance correct,
+    // but we categorize them as 'transfer'.
+    const transferCodes = ['T0400', 'T0401', 'T0500', 'T0501', 'T0300', 'T0303'];
+    const isInternalTransfer = transferCodes.includes(info.transaction_event_code);
 
     // Build description
     let description = info.transaction_subject || '';
@@ -225,17 +231,30 @@ class PayPalApiService {
     }
 
     // Categorize
-    const { category, confidence } = categorizationService.categorize(
-      description,
-      amount,
-      counterparty
-    );
+    let category: any;
+    let confidence: number;
+    let txType: 'income' | 'expense' | 'transfer' = isExpense ? 'expense' : 'income';
+
+    if (isInternalTransfer) {
+      category = 'transfer';
+      confidence = 1.0;
+      txType = 'transfer';
+    } else {
+      const catResult = categorizationService.categorize(
+        description,
+        amount,
+        counterparty
+      );
+      category = catResult.category;
+      confidence = catResult.confidence;
+      if (category === 'transfer') txType = 'transfer';
+    }
 
     return {
       id: `paypal_${info.transaction_id}`,
       date: info.transaction_initiation_date,
       amount,
-      type: isExpense ? 'expense' : 'income',
+      type: txType,
       category,
       description,
       counterparty,
@@ -243,6 +262,7 @@ class PayPalApiService {
       confidence,
       sourceAccount: 'paypal',
       externalId: info.transaction_id,
+      isGuthabenTransfer: isInternalTransfer,
     };
   }
 

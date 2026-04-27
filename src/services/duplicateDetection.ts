@@ -237,15 +237,17 @@ class DuplicateDetectionService {
 
   /**
    * Auto-mark duplicates in a transaction list
-   * Returns the updated list with isDuplicate flags set
+   * Returns the updated list with isDuplicate flags set and links established
    */
   markDuplicates(transactions: Transaction[]): Transaction[] {
+    // 1. Initial cleanup: Find potential duplicates between different accounts
     const duplicates = this.findDuplicates(transactions);
     let updatedTransactions = [...transactions];
     
-    // First, link PayPal Guthaben-Transfers to their real payments
+    // 2. Link PayPal Guthaben-Transfers WITHIN PayPal (funding transfers to real payments)
     updatedTransactions = this.linkGuthabenTransfersToPayments(updatedTransactions);
     
+    // 3. Link Volksbank to PayPal (Cross-Account Linking)
     for (const match of duplicates) {
       // Find the transactions in the list
       const idx1 = updatedTransactions.findIndex(t => t.id === match.transaction1.id);
@@ -253,28 +255,47 @@ class DuplicateDetectionService {
       
       if (idx1 === -1 || idx2 === -1) continue;
       
-      // Mark the Volksbank transaction as duplicate (keep PayPal as primary)
-      // This is because PayPal shows the actual merchant, Volksbank just shows "PayPal"
-      const volksbankIdx = updatedTransactions[idx1].sourceAccount === 'volksbank' ? idx1 : idx2;
-      const paypalIdx = updatedTransactions[idx1].sourceAccount === 'paypal' ? idx1 : idx2;
+      const tx1 = updatedTransactions[idx1];
+      const tx2 = updatedTransactions[idx2];
       
-      if (match.confidence >= CONFIG.highConfidence) {
-        // Auto-mark as duplicate
+      // Determine which is Volksbank and which is PayPal
+      const volksbankIdx = tx1.sourceAccount === 'volksbank' ? idx1 : idx2;
+      const paypalIdx = tx1.sourceAccount === 'paypal' ? idx1 : idx2;
+      
+      const volksbankTx = updatedTransactions[volksbankIdx];
+      const paypalTx = updatedTransactions[paypalIdx];
+      
+      // We only link if we have high confidence or it's a clear PayPal pattern
+      if (match.confidence >= CONFIG.mediumConfidence) {
+        // Update Volksbank transaction with information from PayPal
         updatedTransactions[volksbankIdx] = {
-          ...updatedTransactions[volksbankIdx],
+          ...volksbankTx,
           isDuplicate: true,
-          linkedTransactionId: updatedTransactions[paypalIdx].id,
+          type: 'transfer',
+          category: 'transfer',
+          linkedTransactionId: paypalTx.id,
           duplicateReason: match.reason,
+          // Information Transfer: Enrich Volksbank description with PayPal merchant data
+          description: `PayPal: ${paypalTx.counterparty}${paypalTx.description ? ' - ' + paypalTx.description : ''}`,
+        };
+
+        // Mark PayPal transaction as "funded by bank" for UI
+        updatedTransactions[paypalIdx] = {
+          ...paypalTx,
+          linkedTransactionId: volksbankTx.id,
         };
       }
     }
     
-    // Also mark PayPal balance transfers from bank
+    // 4. Special handling for remaining PayPal balance transfers from bank (Standalone)
     for (let i = 0; i < updatedTransactions.length; i++) {
-      if (this.isPayPalTransfer(updatedTransactions[i])) {
+      const tx = updatedTransactions[i];
+      if (tx.sourceAccount === 'volksbank' && !tx.isDuplicate && this.isPayPalTransfer(tx)) {
         updatedTransactions[i] = {
-          ...updatedTransactions[i],
+          ...tx,
           isDuplicate: true,
+          type: 'transfer',
+          category: 'transfer',
           duplicateReason: 'PayPal Guthaben-Transfer (Bank)',
         };
       }
