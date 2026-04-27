@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Transaction, YearSummary, CategorySummary, INCOME_CATEGORIES, EXPENSE_CATEGORIES, CATEGORY_INFO, SourceAccount, ReferenceBalance, AccountYearSummary } from '../types';
 import { backendApiService } from './backendApi';
 import { categorizationService } from './categorization';
+import { duplicateDetectionService } from './duplicateDetection';
 
 const TRANSACTIONS_KEY = '@spendito_transactions';
 const REFERENCE_BALANCES_KEY = '@spendito_reference_balances';
@@ -339,7 +340,6 @@ class StorageService {
     
     if (addedCount > 0) {
       // After importing, automatically run duplicate detection to link accounts
-      const duplicateDetectionService = new (require('./duplicateDetection').DuplicateDetectionService)();
       this.transactions = duplicateDetectionService.markDuplicates(this.transactions);
       await this.saveTransactions();
     }
