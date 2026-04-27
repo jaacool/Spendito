@@ -275,8 +275,8 @@ class DuplicateDetectionService {
           category: 'transfer',
           linkedTransactionId: paypalTx.id,
           duplicateReason: match.reason,
-          // Information Transfer: Enrich Volksbank description with PayPal merchant data
-          description: `PayPal: ${paypalTx.counterparty}${paypalTx.description ? ' - ' + paypalTx.description : ''}`,
+          // Information Transfer: Keep original but prefix with merchant
+          description: `[PayPal: ${paypalTx.counterparty}] ${volksbankTx.description}`,
         };
 
         // Mark PayPal transaction as "funded by bank" for UI

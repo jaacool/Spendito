@@ -63,17 +63,19 @@ export function TransactionItem({ transaction, onCategoryChange, onConfirm }: Tr
           <View style={[styles.categoryIndicator, { backgroundColor: isDuplicate ? '#d1d5db' : info.color }]} />
           <View style={styles.content}>
             <View style={styles.descriptionRow}>
-              <Text style={[styles.description, isDuplicate && styles.duplicateText]} numberOfLines={1}>
-                {transaction.description}
-              </Text>
               {isLinked && (
                 <View style={[styles.linkBadge, isDuplicate ? styles.duplicateBadge : styles.activeLinkBadge]}>
                   <ArrowLeftRight size={10} color={isDuplicate ? "#9ca3af" : "#6366f1"} />
-                  <Text style={[styles.linkBadgeText, { color: isDuplicate ? "#9ca3af" : "#6366f1" }]}>
-                    {isDuplicate ? 'Verknüpft (Umb.)' : 'Verknüpft'}
-                  </Text>
                 </View>
               )}
+              <Text style={[styles.description, isDuplicate && styles.duplicateText]} numberOfLines={1}>
+                {transaction.description}
+              </Text>
+            </View>
+            <View style={styles.counterpartyRow}>
+              <Text style={[styles.counterparty, isDuplicate && styles.duplicateText]} numberOfLines={1}>
+                {transaction.counterparty}
+              </Text>
               {isDuplicate && !isLinked && (
                 <View style={styles.duplicateBadge}>
                   <Link2 size={10} color="#9ca3af" />
@@ -81,9 +83,6 @@ export function TransactionItem({ transaction, onCategoryChange, onConfirm }: Tr
                 </View>
               )}
             </View>
-            <Text style={[styles.counterparty, isDuplicate && styles.duplicateText]} numberOfLines={1}>
-              {transaction.counterparty}
-            </Text>
             <View style={styles.metaRow}>
               {/* Account Badge */}
               <View style={[styles.accountBadge, { backgroundColor: accountInfo.color + '15' }]}>
@@ -261,22 +260,24 @@ const styles = StyleSheet.create({
   linkBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 4,
+    justifyContent: 'center',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
   },
   activeLinkBadge: {
     backgroundColor: '#6366f115',
   },
-  linkBadgeText: {
-    fontSize: 8,
-    fontWeight: '600',
+  counterpartyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
   },
   counterparty: {
     fontSize: 11,
     color: '#6b7280',
-    marginBottom: 4,
+    flex: 1,
   },
   metaRow: {
     flexDirection: 'row',
