@@ -72,8 +72,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   function updateYearData(year: number) {
     let yearTransactions = storageService.getTransactionsByYear(year);
     
-    // Apply duplicate detection to link PayPal Guthaben-Transfers with real payments
-    yearTransactions = duplicateDetectionService.linkGuthabenTransfersToPayments(yearTransactions);
+    // Auto-mark duplicates and establish links between accounts
+    yearTransactions = duplicateDetectionService.markDuplicates(yearTransactions);
     
     setTransactions(yearTransactions);
     setYearSummary(storageService.getYearSummary(year));

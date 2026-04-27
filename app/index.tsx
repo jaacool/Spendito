@@ -76,20 +76,18 @@ export default function HomeScreen() {
       const txAccount = t.sourceAccount || 'volksbank';
       if (accountFilter !== 'all' && txAccount !== accountFilter) return false;
       
-      // Filter only open/unverified transactions
-      if (showOnlyOpen) {
-        // If showOnlyOpen is active, only show unconfirmed non-duplicates
-        if (t.isUserConfirmed || t.isManuallyCategized || t.isDuplicate) return false;
-      }
-      
-      // Duplicate visibility logic
-      // In "Kombi" view (all accounts), hide duplicates automatically unless explicitly enabled
-      // In single account views, respect the showDuplicates toggle
+      // In "Kombi" view (all accounts), hide duplicates and Guthaben-Transfers automatically
+      // In single account views, show everything (user can toggle duplicates manually)
       if (accountFilter === 'all') {
+        // Always hide duplicates in Kombi view (unless explicitly showing them)
         if (!showDuplicates && (t.isDuplicate || t.isGuthabenTransfer)) return false;
       } else {
+        // In single account view, respect the showDuplicates toggle
         if (!showDuplicates && t.isDuplicate) return false;
       }
+      
+      // Filter only open/unverified transactions
+      if (showOnlyOpen && (t.isUserConfirmed || t.isManuallyCategized)) return false;
       
       // Search filter - matches amount or description/counterparty
       if (searchQuery.trim()) {
