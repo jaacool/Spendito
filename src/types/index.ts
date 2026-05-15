@@ -47,6 +47,7 @@ export interface Transaction {
   linkedPayPalRef?: string; // Reference to linked PayPal transaction
   // PayPal Guthaben-Transfer tracking
   isGuthabenTransfer?: boolean; // True if this is a PayPal Guthaben-Transfer
+  isDemo?: boolean; // True if this is demo data
   linkedPaymentId?: string; // ID of the actual payment this transfer funded
   originalPaymentInfo?: { // Preserved payment info when marking as duplicate
     description: string;

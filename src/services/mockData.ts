@@ -27,6 +27,7 @@ function createTransaction(
     confidence,
     sourceAccount,
     externalId,
+    isDemo: true,
   };
 }
 

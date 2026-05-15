@@ -23,6 +23,7 @@ interface AppContextType {
   confirmTransaction: (id: string) => Promise<void>;
   refreshData: () => Promise<void>;
   loadMockData: () => Promise<void>;
+  removeDemoData: () => Promise<number>;
   setReferenceBalance: (account: 'volksbank' | 'paypal', amount: number) => Promise<void>;
   cleanupTransactions: () => Promise<void>;
   exportDatabase: () => Promise<void>;
@@ -184,6 +185,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function removeDemoData() {
+    setIsLoading(true);
+    try {
+      const removedCount = await storageService.removeDemoData();
+      if (removedCount > 0) {
+        updateYearData(selectedYear);
+      }
+      return removedCount;
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   async function setReferenceBalance(account: 'volksbank' | 'paypal', amount: number) {
     const today = new Date().toISOString();
     await storageService.setReferenceBalance(account, amount, today);
@@ -227,6 +241,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         confirmTransaction,
         refreshData,
         loadMockData,
+        removeDemoData,
         setReferenceBalance,
         cleanupTransactions,
         exportDatabase,

@@ -56,7 +56,7 @@ interface PayPalStatus {
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { uiScale, setUIScale } = useSettings();
-  const { refreshData, setReferenceBalance, cleanupTransactions, exportDatabase } = useApp();
+  const { refreshData, setReferenceBalance, cleanupTransactions, exportDatabase, removeDemoData } = useApp();
   const [connectionStatus, setConnectionStatus] = useState<BankConnectionStatus | null>(null);
   const [paypalStatus, setPaypalStatus] = useState<PayPalStatus | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -694,6 +694,29 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setCacheConfirmStep(1);
   };
 
+  const handleRemoveDemoData = async () => {
+    const confirm = typeof window !== 'undefined' && window.confirm
+      ? window.confirm('Möchtest du wirklich alle Demo-Daten entfernen? Deine importierten Bank- und PayPal-Daten bleiben erhalten.')
+      : true;
+
+    if (confirm) {
+      const removedCount = await removeDemoData();
+      if (removedCount > 0) {
+        if (typeof window !== 'undefined' && window.alert) {
+          window.alert(`${removedCount} Demo-Transaktionen wurden entfernt.`);
+        } else {
+          Alert.alert('Erfolg', `${removedCount} Demo-Transaktionen wurden entfernt.`);
+        }
+      } else {
+        if (typeof window !== 'undefined' && window.alert) {
+          window.alert('Keine Demo-Daten gefunden.');
+        } else {
+          Alert.alert('Info', 'Keine Demo-Daten gefunden.');
+        }
+      }
+    }
+  };
+
   return (
     <Modal
       visible={isOpen}
@@ -1149,13 +1172,22 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             {/* Version */}
             <View style={styles.versionSection}>
               <Text style={styles.versionText}>Spendito v{appVersion}</Text>
-              <Pressable 
-                style={styles.clearCacheButton}
-                onPress={handleCacheDeleteClick}
-              >
-                <Trash2 size={14} color="#ef4444" />
-                <Text style={styles.clearCacheText}>Cache löschen</Text>
-              </Pressable>
+              <View style={styles.footerButtons}>
+                <Pressable 
+                  style={[styles.footerActionButton, { backgroundColor: '#f0f9ff' }]}
+                  onPress={handleRemoveDemoData}
+                >
+                  <RefreshCw size={14} color="#0ea5e9" />
+                  <Text style={[styles.footerActionText, { color: '#0ea5e9' }]}>Demo-Daten entfernen</Text>
+                </Pressable>
+                <Pressable 
+                  style={styles.clearCacheButton}
+                  onPress={handleCacheDeleteClick}
+                >
+                  <Trash2 size={14} color="#ef4444" />
+                  <Text style={styles.clearCacheText}>Cache löschen</Text>
+                </Pressable>
+              </View>
             </View>
           </ScrollView>
         </Pressable>
@@ -1689,6 +1721,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     color: '#ef4444',
+  },
+  footerButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  footerActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  footerActionText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   csvResultBox: {
     backgroundColor: '#f0fdf4',
