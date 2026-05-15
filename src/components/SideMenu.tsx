@@ -106,14 +106,6 @@ export function SideMenu({
               <SlidersHorizontal size={20} color="#6b7280" />
               <Text style={styles.actionText}>Einstellungen</Text>
             </Pressable>
-
-            <Pressable
-              style={styles.actionItem}
-              onPress={onReloadData}
-            >
-              <RefreshCw size={20} color="#6b7280" />
-              <Text style={styles.actionText}>Demo-Daten neu laden</Text>
-            </Pressable>
           </View>
 
           {/* Info */}
@@ -234,17 +226,6 @@ export function SideMenu({
               >
                 <SlidersHorizontal size={20} color="#6b7280" />
                 <Text style={styles.actionText}>Einstellungen</Text>
-              </Pressable>
-
-              <Pressable
-                style={styles.actionItem}
-                onPress={() => {
-                  onReloadData();
-                  onClose();
-                }}
-              >
-                <RefreshCw size={20} color="#6b7280" />
-                <Text style={styles.actionText}>Demo-Daten neu laden</Text>
               </Pressable>
             </View>
 

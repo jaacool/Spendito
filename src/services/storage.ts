@@ -403,41 +403,6 @@ class StorageService {
     }
     return fixCount;
   }
-
-  /**
-   * Removes all demo/mock transactions from the database.
-   * Uses the isDemo flag and known ID patterns from mockData.ts
-   */
-  async removeDemoData(): Promise<number> {
-    const initialCount = this.transactions.length;
-    
-    this.transactions = this.transactions.filter(t => {
-      // 1. Explicit flag
-      if (t.isDemo) return false;
-      
-      // 2. Mock ID patterns (vb_2024_..., pp_2024_...)
-      const isMockId = /^(vb|pp)_\d{4}_\d{1,2}_/.test(t.id);
-      if (isMockId) return false;
-      
-      // 3. Structured Mock externalId patterns (VB2024..., PP2024...)
-      // Real bank IDs are usually UUIDs or long hashes, not "VB" + year + month + day
-      if (t.externalId) {
-        const isMockExternalId = /^(VB|PP)\d{8}/.test(t.externalId) || t.externalId.startsWith('VB_PP_PP');
-        if (isMockExternalId) return false;
-      }
-      
-      return true;
-    });
-
-    const removedCount = initialCount - this.transactions.length;
-    
-    if (removedCount > 0) {
-      await this.saveTransactions();
-      console.log(`[Storage] Removed ${removedCount} demo transactions.`);
-    }
-    
-    return removedCount;
-  }
 }
 
 export const storageService = new StorageService();
