@@ -6,26 +6,20 @@ import {
   Minus, 
   Circle, 
   Plus, 
-  Building2, 
   Wallet, 
   Link, 
   Unlink, 
   CheckCircle2, 
   RefreshCw, 
-  Eye, 
-  EyeOff, 
-  ExternalLink, 
   Trash2, 
   Upload, 
   FileText, 
   Download, 
-  Share2,
   Database
 } from 'lucide-react-native';
 import { useSettings, UIScale } from '../context/SettingsContext';
 import { backendApiService } from '../services/backendApi';
 import { storageService } from '../services/storage';
-import { categorizationService } from '../services/categorization';
 import { csvImportService } from '../services/csvImport';
 import { backupService } from '../services/backup';
 import Constants from 'expo-constants';
@@ -43,11 +37,6 @@ const SCALE_OPTIONS: { value: UIScale; label: string; description: string }[] = 
   { value: 'large', label: 'Groß', description: 'Bessere Lesbarkeit' },
 ];
 
-interface BankConnectionStatus {
-  connected: boolean;
-  connectionId?: string;
-}
-
 interface PayPalStatus {
   configured: boolean;
   connected: boolean;
@@ -57,34 +46,19 @@ interface PayPalStatus {
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { uiScale, setUIScale } = useSettings();
   const { refreshData, setReferenceBalance, cleanupTransactions, exportDatabase } = useApp();
-  const [connectionStatus, setConnectionStatus] = useState<BankConnectionStatus | null>(null);
   const [paypalStatus, setPaypalStatus] = useState<PayPalStatus | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isPaypalLoading, setIsPaypalLoading] = useState(false);
   const [isBackupLoading, setIsBackupLoading] = useState(false);
-  const [showBankForm, setShowBankForm] = useState(false);
-  const [showPin, setShowPin] = useState(false);
-  
-  // Bank connection form
-  const [bankId, setBankId] = useState('');
-  const [loginName, setLoginName] = useState('');
-  const [pin, setPin] = useState('');
-  const [connectionStep, setConnectionStep] = useState<'form' | 'tan-select' | 'syncing' | 'done'>('form');
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [tanMethods, setTanMethods] = useState<Array<{ id: string; name: string }>>([]);
-  const [accounts, setAccounts] = useState<Array<{ id: string; account_number: string; iban?: string }>>([]);
-  const [statusMessage, setStatusMessage] = useState('');
   
   // CSV Import state
   const [isCSVImporting, setIsCSVImporting] = useState(false);
   const [csvImportResult, setCSVImportResult] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Cache deletion warning state
   const [showCacheWarning, setShowCacheWarning] = useState(false);
   const [cacheConfirmStep, setCacheConfirmStep] = useState<1 | 2 | 3>(1);
   const blinkAnim = useRef(new Animated.Value(1)).current;
-  const alarmAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Reference balance state
   const [volksbankBalance, setVolksbankBalance] = useState('');
@@ -92,7 +66,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   useEffect(() => {
     if (isOpen) {
-      loadConnectionStatus();
       loadPayPalStatus();
       loadReferenceBalances();
       cleanupTransactions(); // Run cleanup when opening settings
@@ -117,36 +90,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     Alert.alert('Erfolg', 'Kontostand wurde gespeichert.');
   };
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'PAYPAL_CONNECTED') {
-        loadPayPalStatus();
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-
-    const subscription = Linking.addEventListener('url', (event) => {
-      if (event.url.includes('paypal-success')) {
-        loadPayPalStatus();
-      }
-    });
-
-    return () => {
-      window.removeEventListener('message', handleMessage);
-      subscription.remove();
-    };
-  }, []);
-
-  const loadConnectionStatus = async () => {
-    try {
-      const status = await backendApiService.getConnectionStatus();
-      setConnectionStatus(status);
-    } catch (error) {
-      console.error('Failed to load connection status:', error);
-    }
-  };
-
   const loadPayPalStatus = async () => {
     try {
       const status = await backendApiService.getPayPalStatus();
@@ -159,13 +102,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const handleConnectPayPal = async () => {
     setIsPaypalLoading(true);
     try {
-      // Use new client-side OAuth service
       await backendApiService.connectPayPal();
       await loadPayPalStatus();
       setIsPaypalLoading(false);
     } catch (error: any) {
       setIsPaypalLoading(false);
-      // Check if it's a PayPal approval pending error
       if (error.message?.includes('pending') || error.message?.includes('approval')) {
         Alert.alert(
           'PayPal Genehmigung ausstehend',
@@ -185,13 +126,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const handleSyncPayPal = async () => {
     setIsPaypalLoading(true);
     try {
-      console.log('[PayPal] Starting sync via proxy...');
-      // Sync via proxy - backend returns transactions directly, doesn't store them
       const result = await backendApiService.syncPayPal();
-      console.log('[PayPal] Proxy result:', result);
-      
       if (result.needsAuth) {
-        // User needs to connect PayPal first
         Alert.alert(
           'PayPal nicht verbunden',
           'Bitte verbinde zuerst dein PayPal-Konto.',
@@ -203,309 +139,52 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         return;
       }
       
-      // Transactions are returned directly from proxy - store them locally
       const transactions = result.transactions || [];
-      console.log(`[PayPal] Received ${transactions.length} transactions from proxy (not stored on server)`);
-      
       if (transactions.length > 0) {
         const importResult = await storageService.importTransactions(transactions);
-        console.log('[PayPal] Local storage import result:', importResult);
-        
         if (typeof window !== 'undefined' && window.alert) {
-          window.alert(`PayPal Sync erfolgreich!\n\n${importResult.added} neue Transaktionen importiert\n${importResult.duplicates} Duplikate übersprungen\n\n✅ Daten nur lokal gespeichert, nicht auf Server!`);
+          window.alert(`PayPal Sync erfolgreich!\n\n${importResult.added} neue Transaktionen importiert\n${importResult.duplicates} Duplikate übersprungen\n\n✅ Daten nur lokal gespeichert!`);
         } else {
-          Alert.alert(
-            'PayPal Sync',
-            `${importResult.added} neue Transaktionen importiert!\n(${importResult.duplicates} Duplikate übersprungen)\n\n✅ Nur lokal gespeichert!`
-          );
+          Alert.alert('PayPal Sync', `${importResult.added} neue Transaktionen importiert!\n(${importResult.duplicates} Duplikate übersprungen)`);
         }
-        
-        // Refresh the app data to show new transactions
         await refreshData();
       } else {
         if (typeof window !== 'undefined' && window.alert) {
-          window.alert(`Keine neuen Transaktionen gefunden.\n\n${result.transactionsFound || 0} Transaktionen von PayPal abgerufen.`);
+          window.alert('Keine neuen Transaktionen gefunden.');
         } else {
-          Alert.alert(
-            'PayPal Sync',
-            `Keine neuen Transaktionen gefunden.\n\n${result.transactionsFound || 0} von PayPal abgerufen.`
-          );
+          Alert.alert('PayPal Sync', 'Keine neuen Transaktionen gefunden.');
         }
       }
-      
       await loadPayPalStatus();
     } catch (error: any) {
       console.error('[PayPal] Sync error:', error);
-      if (typeof window !== 'undefined' && window.alert) {
-        window.alert('Fehler: ' + (error.message || 'PayPal Sync fehlgeschlagen'));
-      } else {
-        Alert.alert('Fehler', error.message || 'PayPal Sync fehlgeschlagen');
-      }
+      Alert.alert('Fehler', error.message || 'PayPal Sync fehlgeschlagen');
     } finally {
       setIsPaypalLoading(false);
     }
   };
 
   const handleDisconnectPayPal = async () => {
-    console.log('[PayPal] Disconnect requested');
-    
-    const confirmDisconnect = typeof window !== 'undefined' && window.confirm
+    const confirm = typeof window !== 'undefined' && window.confirm
       ? window.confirm('Möchtest du PayPal wirklich trennen? Alle PayPal-Transaktionen werden gelöscht.')
       : true;
     
-    if (!confirmDisconnect) {
-      return;
-    }
-    
-    console.log('[PayPal] Disconnecting...');
+    if (!confirm) return;
+
     setIsPaypalLoading(true);
     try {
       await backendApiService.disconnectPayPal();
       await loadPayPalStatus();
-      if (typeof window !== 'undefined' && window.alert) {
-        window.alert('PayPal wurde getrennt.');
-      } else {
-        Alert.alert('Erfolg', 'PayPal wurde getrennt.');
-      }
+      Alert.alert('Erfolg', 'PayPal wurde getrennt.');
     } catch (error: any) {
-      console.error('[PayPal] Disconnect error:', error);
-      if (typeof window !== 'undefined' && window.alert) {
-        window.alert('Trennen fehlgeschlagen: ' + error.message);
-      } else {
-        Alert.alert('Fehler', 'Trennen fehlgeschlagen: ' + error.message);
-      }
+      Alert.alert('Fehler', 'Trennen fehlgeschlagen: ' + error.message);
     } finally {
       setIsPaypalLoading(false);
     }
   };
 
-  const handleConnectBank = async () => {
-    console.log('[Bank] handleConnectBank called');
-    setShowBankForm(true);
-    setConnectionStep('form');
-    setPin('');
-    setStatusMessage('');
-    
-    // Load saved credentials if available
-    const savedCredentials = await backendApiService.getSavedBankCredentials();
-    if (savedCredentials) {
-      setBankId(savedCredentials.bankId);
-      setLoginName(savedCredentials.loginName);
-    } else {
-      setBankId('');
-      setLoginName('');
-    }
-  };
-
-  const handleSubmitBankForm = async () => {
-    console.log('[Bank] handleSubmitBankForm called');
-    console.log('[Bank] bankId:', bankId, 'loginName:', loginName, 'pin length:', pin?.length);
-    
-    if (!bankId || !loginName || !pin) {
-      const msg = 'Bitte fülle alle Felder aus.';
-      console.log('[Bank] Validation failed:', msg);
-      if (typeof window !== 'undefined' && window.alert) {
-        window.alert(msg);
-      } else {
-        Alert.alert('Fehler', msg);
-      }
-      return;
-    }
-
-    // Remove spaces from BLZ and validate
-    const cleanBankId = bankId.replace(/\s/g, '');
-    console.log('[Bank] Clean BLZ:', cleanBankId);
-    
-    if (!/^\d{8}$/.test(cleanBankId)) {
-      const msg = `Die BLZ muss genau 8 Ziffern haben. Aktuell: "${cleanBankId}" (${cleanBankId.length} Zeichen)`;
-      console.log('[Bank] BLZ validation failed:', msg);
-      if (typeof window !== 'undefined' && window.alert) {
-        window.alert(msg);
-      } else {
-        Alert.alert('Fehler', msg);
-      }
-      return;
-    }
-    
-    // Use cleaned BLZ
-    setBankId(cleanBankId);
-
-    setIsLoading(true);
-    setStatusMessage('Verbinde mit Bank...');
-
-    try {
-      console.log('[Bank] Starting connection with BLZ:', cleanBankId);
-      const result = await backendApiService.initBankConnection(cleanBankId, loginName, pin);
-      console.log('[Bank] Connection result:', JSON.stringify(result, null, 2));
-      
-      if (result.error) {
-        throw new Error(result.error);
-      }
-      
-      setSessionId(result.sessionId);
-      
-      if (result.tanMethods && result.tanMethods.length > 0) {
-        console.log('[Bank] TAN methods available:', result.tanMethods.length);
-        setTanMethods(result.tanMethods);
-        setConnectionStep('tan-select');
-        setStatusMessage('Wähle TAN-Verfahren');
-      } else if (result.accounts && result.accounts.length > 0) {
-        console.log('[Bank] Accounts found:', result.accounts.length);
-        setAccounts(result.accounts);
-        setConnectionStep('done');
-        setStatusMessage('Verbindung erfolgreich!');
-        await loadConnectionStatus();
-      } else {
-        // No TAN methods and no accounts - something unexpected
-        console.log('[Bank] Unexpected result - no TAN methods or accounts');
-        setStatusMessage('Warte auf Bankserver...');
-        const msg = 'Die Bank hat noch keine Konten zurückgegeben. Möglicherweise ist eine TAN-Freigabe in deiner Banking-App erforderlich.';
-        if (typeof window !== 'undefined' && window.alert) {
-          window.alert(msg);
-        } else {
-          Alert.alert('Hinweis', msg, [{ text: 'OK' }]);
-        }
-      }
-    } catch (error: any) {
-      console.error('[Bank] Connection error:', error);
-      const errorMessage = error.message || 'Unbekannter Fehler';
-      
-      // Provide more helpful error messages
-      let userMessage = errorMessage;
-      if (errorMessage.includes('fetch') || errorMessage.includes('network')) {
-        userMessage = 'Netzwerkfehler. Bitte prüfe deine Internetverbindung.';
-      } else if (errorMessage.includes('timeout')) {
-        userMessage = 'Zeitüberschreitung. Der Bankserver antwortet nicht.';
-      } else if (errorMessage.includes('401') || errorMessage.includes('auth')) {
-        userMessage = 'Anmeldedaten falsch. Bitte prüfe BLZ, Login und PIN.';
-      } else if (errorMessage.includes('500')) {
-        userMessage = 'Serverfehler. Bitte versuche es später erneut.';
-      }
-      
-      if (typeof window !== 'undefined' && window.alert) {
-        window.alert(`Verbindung fehlgeschlagen: ${userMessage}`);
-      } else {
-        Alert.alert('Verbindung fehlgeschlagen', userMessage);
-      }
-      setStatusMessage('Fehler: ' + userMessage);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSelectTanMethod = async (tanMethodId: string) => {
-    if (!sessionId) return;
-
-    setIsLoading(true);
-    setConnectionStep('syncing');
-    setStatusMessage('Synchronisiere Konten...');
-
-    try {
-      const result = await backendApiService.selectTanMethod(sessionId, tanMethodId);
-      
-      if (result.requiresTan) {
-        const msg = result.tanChallenge || 'Bitte TAN eingeben';
-        if (typeof window !== 'undefined' && window.alert) {
-          window.alert(`TAN erforderlich: ${msg}`);
-        } else {
-          Alert.alert('TAN erforderlich', msg);
-        }
-        // TODO: Add TAN input UI
-      } else if (result.accounts) {
-        setAccounts(result.accounts);
-        setConnectionStep('done');
-        setStatusMessage(`${result.accounts.length} Konto(en) gefunden!`);
-        await loadConnectionStatus();
-      }
-    } catch (error: any) {
-      const msg = error.message || 'Synchronisierung fehlgeschlagen';
-      if (typeof window !== 'undefined' && window.alert) {
-        window.alert(`Fehler: ${msg}`);
-      } else {
-        Alert.alert('Fehler', msg);
-      }
-      setConnectionStep('tan-select');
-      setStatusMessage('');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleFetchTransactions = async () => {
-    if (!sessionId || accounts.length === 0) return;
-
-    setIsLoading(true);
-    setStatusMessage('Lade Transaktionen...');
-
-    try {
-      const result = await backendApiService.fetchTransactions(sessionId, accounts[0].id);
-      
-      if (result.requiresTan) {
-        const msg = result.tanChallenge || 'Bitte TAN eingeben';
-        if (typeof window !== 'undefined' && window.alert) {
-          window.alert(`TAN erforderlich: ${msg}`);
-        } else {
-          Alert.alert('TAN erforderlich', msg);
-        }
-      } else {
-        const msg = `${result.transactionsAdded} neue Transaktionen importiert!`;
-        if (typeof window !== 'undefined' && window.alert) {
-          window.alert(`Erfolg: ${msg}`);
-        } else {
-          Alert.alert('Erfolg', msg);
-        }
-        setShowBankForm(false);
-        await backendApiService.endSession();
-      }
-    } catch (error: any) {
-      const msg = error.message || 'Transaktionen konnten nicht geladen werden';
-      if (typeof window !== 'undefined' && window.alert) {
-        window.alert(`Fehler: ${msg}`);
-      } else {
-        Alert.alert('Fehler', msg);
-      }
-    } finally {
-      setIsLoading(false);
-      setStatusMessage('');
-    }
-  };
-
-  const handleDisconnectBank = async () => {
-    Alert.alert(
-      'Bank trennen',
-      'Möchtest du die Bankverbindung wirklich trennen?',
-      [
-        { text: 'Abbrechen', style: 'cancel' },
-        {
-          text: 'Trennen',
-          style: 'destructive',
-          onPress: async () => {
-            await backendApiService.disconnect();
-            await loadConnectionStatus();
-            setShowBankForm(false);
-          },
-        },
-      ]
-    );
-  };
-
-  const handleCancelBankForm = () => {
-    setShowBankForm(false);
-    setConnectionStep('form');
-    setBankId('');
-    setLoginName('');
-    setPin('');
-    setStatusMessage('');
-    if (sessionId) {
-      backendApiService.endSession();
-      setSessionId(null);
-    }
-  };
-
-  // CSV Import handlers
   const handleCSVFileSelect = () => {
     if (typeof document !== 'undefined') {
-      // Web: Create and trigger file input
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = '.csv';
@@ -517,7 +196,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       };
       input.click();
     } else {
-      // Native: Would need expo-document-picker
       window.alert('CSV-Import ist derzeit nur im Browser verfügbar.');
     }
   };
@@ -525,58 +203,27 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const processCSVFile = async (file: File) => {
     setIsCSVImporting(true);
     setCSVImportResult(null);
-    
     try {
       const content = await file.text();
-      console.log('[CSV] File loaded, size:', content.length);
-      
-      // Get existing transactions for duplicate detection
       const existingTransactions = await storageService.getTransactions();
-      
-      // Import CSV - we now import everything but mark PayPal as transfers
-      const result = await csvImportService.importVolksbankCSV(
-        content,
-        existingTransactions,
-        {} // No options needed as skipPayPalTransfers was removed from service
-      );
-      
-      console.log('[CSV] Import result:', result);
+      const result = await csvImportService.importVolksbankCSV(content, existingTransactions, {});
       
       if (result.success && result.transactions.length > 0) {
-        // Save to storage
         const saveResult = await storageService.importTransactions(result.transactions);
-        
-        const message = `✓ ${saveResult.added} Transaktionen importiert\n` +
-          `${saveResult.added > 0 ? (existingTransactions.length + saveResult.added - storageService.getUniqueTransactions().length) : 0} PayPal-Buchungen verknüpft\n` +
-          `${saveResult.duplicates} Duplikate übersprungen`;
-        
+        const message = `✓ ${saveResult.added} Transaktionen importiert\n${saveResult.duplicates} Duplikate übersprungen`;
         setCSVImportResult(message);
-        
-        // Refresh app data
         await refreshData();
-        
         if (typeof window !== 'undefined' && window.alert) {
           window.alert(`CSV Import erfolgreich!\n\n${message}`);
         }
       } else if (result.errors.length > 0) {
-        const errorMsg = `Import fehlgeschlagen:\n${result.errors.join('\n')}`;
-        setCSVImportResult(errorMsg);
-        if (typeof window !== 'undefined' && window.alert) {
-          window.alert(errorMsg);
-        }
+        setCSVImportResult(`Import fehlgeschlagen:\n${result.errors.join('\n')}`);
       } else {
         setCSVImportResult('Keine neuen Transaktionen gefunden.');
-        if (typeof window !== 'undefined' && window.alert) {
-          window.alert('Keine neuen Transaktionen gefunden.');
-        }
       }
     } catch (error: any) {
       console.error('[CSV] Import error:', error);
-      const errorMsg = `Fehler beim Import: ${error.message}`;
-      setCSVImportResult(errorMsg);
-      if (typeof window !== 'undefined' && window.alert) {
-        window.alert(errorMsg);
-      }
+      setCSVImportResult(`Fehler beim Import: ${error.message}`);
     } finally {
       setIsCSVImporting(false);
     }
@@ -612,53 +259,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const appVersion = Constants.expoConfig?.version || '1.0.0';
 
-  // Blinking animation for cache warning
   useEffect(() => {
     if (showCacheWarning) {
-      // Start blinking animation
       Animated.loop(
         Animated.sequence([
-          Animated.timing(blinkAnim, {
-            toValue: 0.2,
-            duration: 500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(blinkAnim, {
-            toValue: 1,
-            duration: 500,
-            useNativeDriver: true,
-          }),
+          Animated.timing(blinkAnim, { toValue: 0.2, duration: 500, useNativeDriver: true }),
+          Animated.timing(blinkAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
         ])
       ).start();
-
-      // Play alarm sound
-      if (typeof Audio !== 'undefined') {
-        // For web, use HTML5 Audio
-        if (typeof window !== 'undefined') {
-          // Create alarm sound using Web Audio API or data URL
-          const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-          const oscillator = audioContext.createOscillator();
-          const gainNode = audioContext.createGain();
-          
-          oscillator.connect(gainNode);
-          gainNode.connect(audioContext.destination);
-          
-          oscillator.frequency.value = 800;
-          oscillator.type = 'sine';
-          gainNode.gain.value = 0.3;
-          
-          oscillator.start();
-          setTimeout(() => {
-            oscillator.frequency.value = 600;
-          }, 200);
-          setTimeout(() => {
-            oscillator.frequency.value = 800;
-          }, 400);
-          setTimeout(() => {
-            oscillator.stop();
-          }, 600);
-        }
-      }
     } else {
       blinkAnim.setValue(1);
     }
@@ -669,14 +277,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setCacheConfirmStep(1);
   };
 
-  const handleCacheConfirmStep1 = () => {
-    setCacheConfirmStep(2);
-  };
-
-  const handleCacheConfirmStep2 = () => {
-    setCacheConfirmStep(3);
-  };
-
+  const handleCacheConfirmStep1 = () => setCacheConfirmStep(2);
+  const handleCacheConfirmStep2 = () => setCacheConfirmStep(3);
   const handleCacheConfirmStep3 = async () => {
     setShowCacheWarning(false);
     await storageService.clearAll();
@@ -695,15 +297,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   };
 
   return (
-    <Modal
-      visible={isOpen}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
+    <Modal visible={isOpen} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}>
         <Pressable style={styles.container} onPress={(e) => e.stopPropagation()}>
-          {/* Header */}
           <View style={styles.header}>
             <Text style={styles.title}>Einstellungen</Text>
             <Pressable onPress={onClose} style={styles.closeButton}>
@@ -712,294 +308,61 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </View>
 
           <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-              {/* Reference Balances Section */}
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Wallet size={16} color="#6b7280" />
-                  <Text style={styles.sectionTitle}>Aktuelle Kontostände (für Export)</Text>
+            {/* Reference Balances Section */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Wallet size={16} color="#6b7280" />
+                <Text style={styles.sectionTitle}>Aktuelle Kontostände (für Export)</Text>
+              </View>
+              <View style={styles.balanceInputContainer}>
+                <View style={styles.balanceInputRow}>
+                  <Text style={styles.balanceInputLabel}>Volksbank:</Text>
+                  <TextInput style={styles.balanceInput} value={volksbankBalance} onChangeText={setVolksbankBalance} placeholder="0,00" keyboardType="numeric" />
+                  <Text style={styles.currencyLabel}>€</Text>
+                  <TouchableOpacity style={styles.saveBalanceButton} onPress={() => handleSaveBalance('volksbank')}>
+                    <CheckCircle2 size={16} color="#22c55e" />
+                  </TouchableOpacity>
                 </View>
-                
-                <View style={styles.balanceInputContainer}>
-                  <View style={styles.balanceInputRow}>
-                    <Text style={styles.balanceInputLabel}>Volksbank:</Text>
-                    <TextInput
-                      style={styles.balanceInput}
-                      value={volksbankBalance}
-                      onChangeText={setVolksbankBalance}
-                      placeholder="0,00"
-                      keyboardType="numeric"
-                    />
-                    <Text style={styles.currencyLabel}>€</Text>
-                    <TouchableOpacity 
-                      style={styles.saveBalanceButton}
-                      onPress={() => handleSaveBalance('volksbank')}
-                    >
-                      <CheckCircle2 size={16} color="#22c55e" />
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.balanceInputRow}>
-                    <Text style={styles.balanceInputLabel}>PayPal:</Text>
-                    <TextInput
-                      style={styles.balanceInput}
-                      value={paypalBalance}
-                      onChangeText={setPaypalBalance}
-                      placeholder="0,00"
-                      keyboardType="numeric"
-                    />
-                    <Text style={styles.currencyLabel}>€</Text>
-                    <TouchableOpacity 
-                      style={styles.saveBalanceButton}
-                      onPress={() => handleSaveBalance('paypal')}
-                    >
-                      <CheckCircle2 size={16} color="#22c55e" />
-                    </TouchableOpacity>
-                  </View>
-                  <Text style={styles.balanceHelpText}>
-                    Gib hier den aktuellen Stand deines Kontos an. Die App berechnet daraus die historischen Stände für den Steuer-Export.
-                  </Text>
+                <View style={styles.balanceInputRow}>
+                  <Text style={styles.balanceInputLabel}>PayPal:</Text>
+                  <TextInput style={styles.balanceInput} value={paypalBalance} onChangeText={setPaypalBalance} placeholder="0,00" keyboardType="numeric" />
+                  <Text style={styles.currencyLabel}>€</Text>
+                  <TouchableOpacity style={styles.saveBalanceButton} onPress={() => handleSaveBalance('paypal')}>
+                    <CheckCircle2 size={16} color="#22c55e" />
+                  </TouchableOpacity>
                 </View>
               </View>
+            </View>
 
-              {/* Backup & Restore Section */}
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Download size={16} color="#6b7280" />
-                  <Text style={styles.sectionTitle}>Datensicherung</Text>
-                </View>
-
-                <View style={styles.backupButtonsContainer}>
-                    <TouchableOpacity 
-                      style={[styles.connectButton, { backgroundColor: '#6366f115', marginRight: 8, cursor: 'pointer' } as any]}
-                      onPress={handleExportData}
-                      activeOpacity={0.7}
-                    >
-                      <Download size={12} color="#6366f1" />
-                      <Text style={[styles.connectButtonText, { color: '#6366f1' }]}>Export</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity 
-                      style={[styles.connectButton, { backgroundColor: '#8b5cf615', marginRight: 8, cursor: 'pointer' } as any]}
-                      onPress={handleImportData}
-                      activeOpacity={0.7}
-                      disabled={isBackupLoading}
-                    >
-                      {isBackupLoading ? (
-                        <ActivityIndicator size="small" color="#8b5cf6" />
-                      ) : (
-                        <>
-                          <Upload size={12} color="#8b5cf6" />
-                          <Text style={[styles.connectButtonText, { color: '#8b5cf6' }]}>Import</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-
-                    <TouchableOpacity 
-                      style={[styles.connectButton, { backgroundColor: '#f59e0b15', cursor: 'pointer' } as any]}
-                      onPress={exportDatabase}
-                      activeOpacity={0.7}
-                    >
-                      <Database size={12} color="#f59e0b" />
-                      <Text style={[styles.connectButtonText, { color: '#f59e0b' }]}>DB Export</Text>
-                    </TouchableOpacity>
-                </View>
+            {/* Backup & Restore Section */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Download size={16} color="#6b7280" />
+                <Text style={styles.sectionTitle}>Datensicherung</Text>
               </View>
+              <View style={styles.backupButtonsContainer}>
+                <TouchableOpacity style={[styles.connectButton, { backgroundColor: '#6366f115' } as any]} onPress={handleExportData}>
+                  <Download size={12} color="#6366f1" />
+                  <Text style={[styles.connectButtonText, { color: '#6366f1' }]}>Export</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.connectButton, { backgroundColor: '#8b5cf615' } as any]} onPress={handleImportData} disabled={isBackupLoading}>
+                  {isBackupLoading ? <ActivityIndicator size="small" color="#8b5cf6" /> : (
+                    <><Upload size={12} color="#8b5cf6" /><Text style={[styles.connectButtonText, { color: '#8b5cf6' }]}>Import</Text></>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.connectButton, { backgroundColor: '#f59e0b15' } as any]} onPress={exportDatabase}>
+                  <Database size={12} color="#f59e0b" />
+                  <Text style={[styles.connectButtonText, { color: '#f59e0b' }]}>DB Export</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
 
-              {/* Bank Connections Section */}
+            {/* Bank Connections Section */}
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Link size={16} color="#6b7280" />
                 <Text style={styles.sectionTitle}>Kontoverbindungen</Text>
               </View>
-
-              {/* Volksbank Connection */}
-              <View style={styles.connectionCard}>
-                <View style={styles.connectionInfo}>
-                  <View style={[styles.connectionIcon, { backgroundColor: '#0066b315' }]}>
-                    <Building2 size={18} color="#0066b3" />
-                  </View>
-                  <View style={styles.connectionDetails}>
-                    <Text style={styles.connectionName}>Volksbank (FinTS)</Text>
-                    {connectionStatus?.connected ? (
-                      <View style={styles.connectedBadge}>
-                        <CheckCircle2 size={10} color="#22c55e" />
-                        <Text style={styles.connectedText}>Verbunden</Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.disconnectedText}>Nicht verbunden</Text>
-                    )}
-                  </View>
-                </View>
-                {connectionStatus?.connected ? (
-                  <Pressable style={styles.disconnectButton} onPress={handleDisconnectBank}>
-                    <Unlink size={14} color="#ef4444" />
-                  </Pressable>
-                ) : (
-                  <TouchableOpacity 
-                    style={[styles.connectButton, { cursor: 'pointer' } as any]} 
-                    onPress={() => {
-                      console.log('[Bank] Verbinden button pressed');
-                      handleConnectBank();
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Link size={12} color="#0066b3" />
-                    <Text style={styles.connectButtonText}>Verbinden</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              {/* Bank Connection Form */}
-              {showBankForm && (
-                <View style={styles.bankForm}>
-                  <Text style={styles.bankFormTitle}>
-                    {connectionStep === 'form' && 'Bank verbinden'}
-                    {connectionStep === 'tan-select' && 'TAN-Verfahren wählen'}
-                    {connectionStep === 'syncing' && 'Synchronisiere...'}
-                    {connectionStep === 'done' && 'Verbindung erfolgreich'}
-                  </Text>
-
-                  {statusMessage ? (
-                    <View style={styles.statusBar}>
-                      {isLoading && <ActivityIndicator size="small" color="#0066b3" />}
-                      <Text style={styles.statusText}>{statusMessage}</Text>
-                    </View>
-                  ) : null}
-
-                  {connectionStep === 'form' && (
-                    <>
-                      <View style={styles.inputGroup}>
-                        <Text style={styles.inputLabel}>Bankleitzahl (BLZ)</Text>
-                        <TextInput
-                          style={styles.input}
-                          value={bankId}
-                          onChangeText={setBankId}
-                          placeholder="z.B. 76069449"
-                          keyboardType="number-pad"
-                          maxLength={8}
-                        />
-                      </View>
-
-                      <View style={styles.inputGroup}>
-                        <Text style={styles.inputLabel}>VR-NetKey / Alias</Text>
-                        <TextInput
-                          style={styles.input}
-                          value={loginName}
-                          onChangeText={setLoginName}
-                          placeholder="Dein Login-Name"
-                          autoCapitalize="none"
-                        />
-                      </View>
-
-                      <View style={styles.inputGroup}>
-                        <Text style={styles.inputLabel}>PIN</Text>
-                        <View style={styles.pinInputContainer}>
-                          <TextInput
-                            style={[styles.input, styles.pinInput]}
-                            value={pin}
-                            onChangeText={setPin}
-                            placeholder="••••••"
-                            secureTextEntry={!showPin}
-                            autoCapitalize="none"
-                          />
-                          <Pressable 
-                            style={styles.pinToggle}
-                            onPress={() => setShowPin(!showPin)}
-                          >
-                            {showPin ? (
-                              <EyeOff size={18} color="#6b7280" />
-                            ) : (
-                              <Eye size={18} color="#6b7280" />
-                            )}
-                          </Pressable>
-                        </View>
-                      </View>
-
-                      <View style={styles.formButtons}>
-                        <TouchableOpacity 
-                          style={[styles.cancelButton, { cursor: 'pointer' } as any]}
-                          onPress={handleCancelBankForm}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.cancelButtonText}>Abbrechen</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity 
-                          style={[styles.submitButton, isLoading && styles.buttonDisabled, { cursor: 'pointer' } as any]}
-                          onPress={() => {
-                            console.log('[Bank] Submit button pressed, isLoading:', isLoading);
-                            if (!isLoading) {
-                              handleSubmitBankForm();
-                            }
-                          }}
-                          activeOpacity={0.7}
-                          disabled={isLoading}
-                        >
-                          {isLoading ? (
-                            <ActivityIndicator size="small" color="#fff" />
-                          ) : (
-                            <Text style={styles.submitButtonText}>Verbinden</Text>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                    </>
-                  )}
-
-                  {connectionStep === 'tan-select' && (
-                    <View style={styles.tanMethodList}>
-                      {tanMethods.map((method) => (
-                        <Pressable
-                          key={method.id}
-                          style={styles.tanMethodOption}
-                          onPress={() => handleSelectTanMethod(method.id)}
-                          disabled={isLoading}
-                        >
-                          <Text style={styles.tanMethodName}>{method.name}</Text>
-                        </Pressable>
-                      ))}
-                      <Pressable 
-                        style={styles.cancelButton}
-                        onPress={handleCancelBankForm}
-                      >
-                        <Text style={styles.cancelButtonText}>Abbrechen</Text>
-                      </Pressable>
-                    </View>
-                  )}
-
-                  {connectionStep === 'done' && (
-                    <View style={styles.doneSection}>
-                      <CheckCircle2 size={32} color="#22c55e" />
-                      <Text style={styles.doneText}>
-                        {accounts.length} Konto(en) gefunden
-                      </Text>
-                      {accounts.map((acc) => (
-                        <Text key={acc.id} style={styles.accountInfo}>
-                          {acc.iban || acc.account_number}
-                        </Text>
-                      ))}
-                      <Pressable 
-                        style={[styles.submitButton, { marginTop: 12 }]}
-                        onPress={handleFetchTransactions}
-                        disabled={isLoading}
-                      >
-                        {isLoading ? (
-                          <ActivityIndicator size="small" color="#fff" />
-                        ) : (
-                          <>
-                            <RefreshCw size={14} color="#fff" />
-                            <Text style={styles.submitButtonText}>Transaktionen laden</Text>
-                          </>
-                        )}
-                      </Pressable>
-                      <Pressable 
-                        style={[styles.cancelButton, { marginTop: 8 }]}
-                        onPress={handleCancelBankForm}
-                      >
-                        <Text style={styles.cancelButtonText}>Schließen</Text>
-                      </Pressable>
-                    </View>
-                  )}
-                </View>
-              )}
 
               {/* CSV Import */}
               <View style={styles.connectionCard}>
@@ -1012,29 +375,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <Text style={styles.disconnectedText}>Volksbank Umsätze importieren</Text>
                   </View>
                 </View>
-                <TouchableOpacity 
-                  style={[styles.connectButton, { backgroundColor: '#10b98115', cursor: 'pointer' } as any]}
-                  onPress={handleCSVFileSelect}
-                  activeOpacity={0.7}
-                  disabled={isCSVImporting}
-                >
-                  {isCSVImporting ? (
-                    <ActivityIndicator size="small" color="#10b981" />
-                  ) : (
-                    <>
-                      <Upload size={12} color="#10b981" />
-                      <Text style={[styles.connectButtonText, { color: '#10b981' }]}>CSV laden</Text>
-                    </>
+                <TouchableOpacity style={[styles.connectButton, { backgroundColor: '#10b98115' } as any]} onPress={handleCSVFileSelect} disabled={isCSVImporting}>
+                  {isCSVImporting ? <ActivityIndicator size="small" color="#10b981" /> : (
+                    <><Upload size={12} color="#10b981" /><Text style={[styles.connectButtonText, { color: '#10b981' }]}>CSV laden</Text></>
                   )}
                 </TouchableOpacity>
               </View>
-
-              {/* CSV Import Result */}
-              {csvImportResult && (
-                <View style={styles.csvResultBox}>
-                  <Text style={styles.csvResultText}>{csvImportResult}</Text>
-                </View>
-              )}
 
               {/* PayPal Connection */}
               <View style={styles.connectionCard}>
@@ -1045,33 +391,17 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <View style={styles.connectionDetails}>
                     <Text style={styles.connectionName}>PayPal</Text>
                     {paypalStatus?.connected ? (
-                      <View style={styles.connectedBadge}>
-                        <CheckCircle2 size={10} color="#22c55e" />
-                        <Text style={styles.connectedText}>Verbunden</Text>
-                      </View>
-                    ) : paypalStatus?.configured ? (
-                      <Text style={styles.disconnectedText}>Nicht verbunden</Text>
-                    ) : (
-                      <Text style={styles.disconnectedText}>Nicht konfiguriert</Text>
-                    )}
+                      <View style={styles.connectedBadge}><CheckCircle2 size={10} color="#22c55e" /><Text style={styles.connectedText}>Verbunden</Text></View>
+                    ) : <Text style={styles.disconnectedText}>{paypalStatus?.configured ? 'Nicht verbunden' : 'Nicht konfiguriert'}</Text>}
                   </View>
                 </View>
                 {paypalStatus?.configured && (
                   <View style={styles.paypalButtons}>
                     {paypalStatus?.connected ? (
                       <>
-                        <Pressable 
-                          style={[styles.syncButton, isPaypalLoading && styles.buttonDisabled]}
-                          onPress={handleSyncPayPal}
-                          disabled={isPaypalLoading}
-                        >
-                          {isPaypalLoading ? (
-                            <ActivityIndicator size="small" color="#003087" />
-                          ) : (
-                            <>
-                              <RefreshCw size={12} color="#003087" />
-                              <Text style={[styles.connectButtonText, { color: '#003087' }]}>Sync</Text>
-                            </>
+                        <Pressable style={[styles.syncButton, isPaypalLoading && styles.buttonDisabled]} onPress={handleSyncPayPal} disabled={isPaypalLoading}>
+                          {isPaypalLoading ? <ActivityIndicator size="small" color="#003087" /> : (
+                            <><RefreshCw size={12} color="#003087" /><Text style={[styles.connectButtonText, { color: '#003087' }]}>Sync</Text></>
                           )}
                         </Pressable>
                         <Pressable style={styles.disconnectButton} onPress={handleDisconnectPayPal}>
@@ -1079,18 +409,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         </Pressable>
                       </>
                     ) : (
-                      <Pressable 
-                        style={[styles.connectButton, { backgroundColor: '#00308715' }, isPaypalLoading && styles.buttonDisabled]}
-                        onPress={handleConnectPayPal}
-                        disabled={isPaypalLoading}
-                      >
-                        {isPaypalLoading ? (
-                          <ActivityIndicator size="small" color="#003087" />
-                        ) : (
-                          <>
-                            <ExternalLink size={12} color="#003087" />
-                            <Text style={[styles.connectButtonText, { color: '#003087' }]}>Verbinden</Text>
-                          </>
+                      <Pressable style={[styles.connectButton, { backgroundColor: '#00308715' }, isPaypalLoading && styles.buttonDisabled]} onPress={handleConnectPayPal} disabled={isPaypalLoading}>
+                        {isPaypalLoading ? <ActivityIndicator size="small" color="#003087" /> : (
+                          <><Link size={12} color="#003087" /><Text style={[styles.connectButtonText, { color: '#003087' }]}>Verbinden</Text></>
                         )}
                       </Pressable>
                     )}
@@ -1101,167 +422,64 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
             {/* UI Scale Setting */}
             <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Type size={16} color="#6b7280" />
-              <Text style={styles.sectionTitle}>Anzeigegröße</Text>
-            </View>
-            
-            <View style={styles.scaleOptions}>
-              {SCALE_OPTIONS.map((option) => (
-                <Pressable
-                  key={option.value}
-                  style={[
-                    styles.scaleOption,
-                    uiScale === option.value && styles.scaleOptionActive,
-                  ]}
-                  onPress={() => setUIScale(option.value)}
-                >
-                  <View style={styles.scaleIconContainer}>
-                    {option.value === 'compact' && <Minus size={16} color={uiScale === option.value ? '#0ea5e9' : '#9ca3af'} />}
-                    {option.value === 'default' && <Circle size={16} color={uiScale === option.value ? '#0ea5e9' : '#9ca3af'} />}
-                    {option.value === 'large' && <Plus size={16} color={uiScale === option.value ? '#0ea5e9' : '#9ca3af'} />}
-                  </View>
-                  <Text style={[
-                    styles.scaleLabel,
-                    uiScale === option.value && styles.scaleLabelActive,
-                  ]}>
-                    {option.label}
-                  </Text>
-                  <Text style={styles.scaleDescription}>{option.description}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          {/* Preview */}
-            <View style={styles.previewSection}>
-              <Text style={styles.previewLabel}>Vorschau</Text>
-              <View style={styles.previewCard}>
-                <Text style={[styles.previewTitle, { fontSize: 14 * (uiScale === 'compact' ? 0.85 : uiScale === 'large' ? 1.15 : 1) }]}>
-                  Beispiel Transaktion
-                </Text>
-                <Text style={[styles.previewAmount, { fontSize: 18 * (uiScale === 'compact' ? 0.85 : uiScale === 'large' ? 1.15 : 1) }]}>
-                  +250,00 €
-                </Text>
+              <View style={styles.sectionHeader}><Type size={16} color="#6b7280" /><Text style={styles.sectionTitle}>Anzeigegröße</Text></View>
+              <View style={styles.scaleOptions}>
+                {SCALE_OPTIONS.map((option) => (
+                  <Pressable key={option.value} style={[styles.scaleOption, uiScale === option.value && styles.scaleOptionActive]} onPress={() => setUIScale(option.value)}>
+                    <View style={styles.scaleIconContainer}>
+                      {option.value === 'compact' && <Minus size={16} color={uiScale === option.value ? '#0ea5e9' : '#9ca3af'} />}
+                      {option.value === 'default' && <Circle size={16} color={uiScale === option.value ? '#0ea5e9' : '#9ca3af'} />}
+                      {option.value === 'large' && <Plus size={16} color={uiScale === option.value ? '#0ea5e9' : '#9ca3af'} />}
+                    </View>
+                    <Text style={[styles.scaleLabel, uiScale === option.value && styles.scaleLabelActive]}>{option.label}</Text>
+                    <Text style={styles.scaleDescription}>{option.description}</Text>
+                  </Pressable>
+                ))}
               </View>
             </View>
 
             {/* Version */}
             <View style={styles.versionSection}>
               <Text style={styles.versionText}>Spendito v{appVersion}</Text>
-              <Pressable 
-                style={styles.clearCacheButton}
-                onPress={handleCacheDeleteClick}
-              >
+              <Pressable style={styles.clearCacheButton} onPress={handleCacheDeleteClick}>
                 <Trash2 size={14} color="#ef4444" />
                 <Text style={styles.clearCacheText}>Cache löschen</Text>
               </Pressable>
             </View>
           </ScrollView>
+
+          {/* Warning Modal */}
+          {showCacheWarning && (
+            <Modal visible={showCacheWarning} transparent animationType="fade" onRequestClose={handleCancelCacheDeletion}>
+              <Pressable style={styles.warningOverlay} onPress={handleCancelCacheDeletion}>
+                <Animated.View style={[styles.warningContainer, { opacity: blinkAnim }]}>
+                  <View style={styles.warningHeader}><Text style={styles.warningTitle}>⚠️ WARNUNG ⚠️</Text></View>
+                  <View style={styles.warningContent}>
+                    {cacheConfirmStep === 1 && (
+                      <><Text style={styles.warningText}>Cache löschen?</Text><View style={styles.warningButtons}>
+                        <Pressable style={styles.warningCancelButton} onPress={handleCancelCacheDeletion}><Text style={styles.warningCancelText}>Abbrechen</Text></Pressable>
+                        <Pressable style={styles.warningConfirmButton} onPress={handleCacheConfirmStep1}><Text style={styles.warningConfirmText}>Ja</Text></Pressable>
+                      </View></>
+                    )}
+                    {cacheConfirmStep === 2 && (
+                      <><Text style={styles.warningText}>Mit Aaron gesprochen?</Text><View style={styles.warningButtons}>
+                        <Pressable style={styles.warningCancelButton} onPress={handleCancelCacheDeletion}><Text style={styles.warningCancelText}>Nein</Text></Pressable>
+                        <Pressable style={styles.warningConfirmButton} onPress={handleCacheConfirmStep2}><Text style={styles.warningConfirmText}>Ja</Text></Pressable>
+                      </View></>
+                    )}
+                    {cacheConfirmStep === 3 && (
+                      <><Text style={styles.warningText}>LETZTE WARNUNG!</Text><View style={styles.warningButtons}>
+                        <Pressable style={styles.warningCancelButton} onPress={handleCancelCacheDeletion}><Text style={styles.warningCancelText}>Abbrechen</Text></Pressable>
+                        <Pressable style={styles.warningDangerButton} onPress={handleCacheConfirmStep3}><Text style={styles.warningDangerText}>LÖSCHEN!</Text></Pressable>
+                      </View></>
+                    )}
+                  </View>
+                </Animated.View>
+              </Pressable>
+            </Modal>
+          )}
         </Pressable>
       </Pressable>
-
-      {/* Cache Deletion Warning Modal */}
-      {showCacheWarning && (
-        <Modal
-          visible={showCacheWarning}
-          transparent
-          animationType="fade"
-          onRequestClose={handleCancelCacheDeletion}
-        >
-          <Pressable style={styles.warningOverlay} onPress={handleCancelCacheDeletion}>
-            <Animated.View 
-              style={[
-                styles.warningContainer,
-                { opacity: blinkAnim }
-              ]}
-              onStartShouldSetResponder={() => true}
-              onResponderRelease={(e) => e.stopPropagation()}
-            >
-              <View style={styles.warningHeader}>
-                <Text style={styles.warningTitle}>⚠️ WARNUNG ⚠️</Text>
-              </View>
-
-              <View style={styles.warningContent}>
-                {cacheConfirmStep === 1 && (
-                  <>
-                    <Text style={styles.warningText}>
-                      Möchtest du wirklich den gesamten Cache löschen?
-                    </Text>
-                    <Text style={styles.warningSubtext}>
-                      Alle lokalen Daten werden unwiderruflich gelöscht!
-                    </Text>
-                    <View style={styles.warningButtons}>
-                      <Pressable 
-                        style={styles.warningCancelButton}
-                        onPress={handleCancelCacheDeletion}
-                      >
-                        <Text style={styles.warningCancelText}>Abbrechen</Text>
-                      </Pressable>
-                      <Pressable 
-                        style={styles.warningConfirmButton}
-                        onPress={handleCacheConfirmStep1}
-                      >
-                        <Text style={styles.warningConfirmText}>Ja, fortfahren</Text>
-                      </Pressable>
-                    </View>
-                  </>
-                )}
-
-                {cacheConfirmStep === 2 && (
-                  <>
-                    <Text style={styles.warningText}>
-                      Hast du Aaron auch schon gefragt?
-                    </Text>
-                    <Text style={styles.warningSubtext}>
-                      Diese Aktion sollte mit Aaron abgestimmt werden.
-                    </Text>
-                    <View style={styles.warningButtons}>
-                      <Pressable 
-                        style={styles.warningCancelButton}
-                        onPress={handleCancelCacheDeletion}
-                      >
-                        <Text style={styles.warningCancelText}>Nein, abbrechen</Text>
-                      </Pressable>
-                      <Pressable 
-                        style={styles.warningConfirmButton}
-                        onPress={handleCacheConfirmStep2}
-                      >
-                        <Text style={styles.warningConfirmText}>Ja, habe ich</Text>
-                      </Pressable>
-                    </View>
-                  </>
-                )}
-
-                {cacheConfirmStep === 3 && (
-                  <>
-                    <Text style={styles.warningText}>
-                      LETZTE WARNUNG!
-                    </Text>
-                    <Text style={styles.warningSubtext}>
-                      Bist du dir absolut sicher? Der Cache wird JETZT gelöscht!
-                    </Text>
-                    <View style={styles.warningButtons}>
-                      <Pressable 
-                        style={styles.warningCancelButton}
-                        onPress={handleCancelCacheDeletion}
-                      >
-                        <Text style={styles.warningCancelText}>Abbrechen</Text>
-                      </Pressable>
-                      <Pressable 
-                        style={styles.warningDangerButton}
-                        onPress={handleCacheConfirmStep3}
-                      >
-                        <Text style={styles.warningDangerText}>JA, LÖSCHEN!</Text>
-                      </Pressable>
-                    </View>
-                  </>
-                )}
-              </View>
-            </Animated.View>
-          </Pressable>
-        </Modal>
-      )}
     </Modal>
   );
 }
@@ -1355,33 +573,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#9ca3af',
   },
-  previewSection: {
-    padding: 16,
-    paddingTop: 0,
-  },
-  previewLabel: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: '#9ca3af',
-    marginBottom: 8,
-  },
-  previewCard: {
-    backgroundColor: '#f9fafb',
-    borderRadius: 10,
-    padding: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  previewTitle: {
-    fontWeight: '500',
-    color: '#374151',
-  },
-  previewAmount: {
-    fontWeight: '600',
-    color: '#22c55e',
-  },
-  // Connection styles
   scrollContent: {
     maxHeight: 500,
   },
@@ -1438,12 +629,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     backgroundColor: '#e0f2fe',
     borderRadius: 6,
-    cursor: 'pointer',
-  } as any,
+  },
   connectButtonText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#0066b3',
   },
   disconnectButton: {
     width: 28,
@@ -1456,46 +645,6 @@ const styles = StyleSheet.create({
   buttonDisabled: {
     opacity: 0.6,
   },
-  bankList: {
-    marginTop: 8,
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    maxHeight: 200,
-  },
-  bankListTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6b7280',
-    padding: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  bankOption: {
-    padding: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
-  },
-  bankOptionName: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#1f2937',
-  },
-  bankOptionBic: {
-    fontSize: 10,
-    color: '#9ca3af',
-    marginTop: 2,
-  },
-  cancelBankButton: {
-    padding: 10,
-    alignItems: 'center',
-  },
-  cancelBankText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#6b7280',
-  },
   versionSection: {
     padding: 16,
     alignItems: 'center',
@@ -1503,22 +652,6 @@ const styles = StyleSheet.create({
   versionText: {
     fontSize: 11,
     color: '#9ca3af',
-  },
-  // Bank form styles
-  bankForm: {
-    backgroundColor: '#ffffff',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    padding: 16,
-    marginTop: 8,
-  },
-  bankFormTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 12,
-    textAlign: 'center',
   },
   statusBar: {
     flexDirection: 'row',
