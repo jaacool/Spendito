@@ -8,6 +8,7 @@
 import { Transaction, Category, CATEGORY_INFO, INCOME_CATEGORIES, EXPENSE_CATEGORIES, TRANSFER_CATEGORIES } from '../types';
 import { categorizationService } from './categorization';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { secureStorageService } from './secureStorage';
 
 // In a real app, this should be in an environment variable or secure storage
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
@@ -102,17 +103,23 @@ Behalte die aktuelle Kategorie bei, wenn sie korrekt erscheint.`;
    */
   async reviewTransactions(transactions: Transaction[]): Promise<ReviewResult[]> {
     console.log('[AI Review] Starting review for', transactions.length, 'transactions');
+    
+    // Get API Key from SecureStore
+    const apiKey = await secureStorageService.getApiKey();
+    const GEMINI_API_KEY = apiKey || process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+
     console.log('[AI Review] API Key present:', !!GEMINI_API_KEY);
     console.log('[AI Review] API Key length:', GEMINI_API_KEY?.length || 0);
     
     if (!GEMINI_API_KEY) {
-      console.warn('[AI Review] Gemini API Key missing (EXPO_PUBLIC_GEMINI_API_KEY). Using rule-based review.');
+      console.warn('[AI Review] Gemini API Key missing. Using rule-based review.');
       return this.ruleBasedReview(transactions);
     }
 
     try {
       console.log('[AI Review] Initializing Gemini model...');
-      const model = genAI.getGenerativeModel({ 
+      const localGenAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+      const model = localGenAI.getGenerativeModel({ 
         model: "gemini-2.5-flash-lite",
         generationConfig: {
           responseMimeType: "application/json",

@@ -15,13 +15,16 @@ import {
   Upload, 
   FileText, 
   Download, 
-  Database
+  Database,
+  Key,
+  ShieldCheck
 } from 'lucide-react-native';
 import { useSettings, UIScale } from '../context/SettingsContext';
 import { backendApiService } from '../services/backendApi';
 import { storageService } from '../services/storage';
 import { csvImportService } from '../services/csvImport';
 import { backupService } from '../services/backup';
+import { secureStorageService } from '../services/secureStorage';
 import Constants from 'expo-constants';
 
 import { useApp } from '../context/AppContext';
@@ -64,13 +67,61 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [volksbankBalance, setVolksbankBalance] = useState('');
   const [paypalBalance, setPaypalBalance] = useState('');
 
+  // AI Key state
+  const [aiApiKey, setAiApiKey] = useState('');
+  const [hasAiApiKey, setHasAiApiKey] = useState(false);
+  const [isSavingKey, setIsSavingKey] = useState(false);
+
   useEffect(() => {
     if (isOpen) {
       loadPayPalStatus();
       loadReferenceBalances();
+      loadAIKeyStatus();
       cleanupTransactions(); // Run cleanup when opening settings
     }
   }, [isOpen]);
+
+  const loadAIKeyStatus = async () => {
+    const exists = await secureStorageService.hasApiKey();
+    setHasAiApiKey(exists);
+  };
+
+  const handleSaveAIKey = async () => {
+    if (!aiApiKey.trim()) {
+      Alert.alert('Fehler', 'Bitte gib einen gültigen API-Key ein.');
+      return;
+    }
+    
+    setIsSavingKey(true);
+    try {
+      await secureStorageService.saveApiKey(aiApiKey.trim());
+      setAiApiKey(''); // Clear for security
+      await loadAIKeyStatus();
+      Alert.alert('Erfolg', 'KI API-Key wurde sicher gespeichert.');
+    } catch (error) {
+      Alert.alert('Fehler', 'Key konnte nicht gespeichert werden.');
+    } finally {
+      setIsSavingKey(false);
+    }
+  };
+
+  const handleDeleteAIKey = async () => {
+    Alert.alert(
+      'Key löschen',
+      'Möchtest du den gespeicherten KI API-Key wirklich entfernen?',
+      [
+        { text: 'Abbrechen', style: 'cancel' },
+        { 
+          text: 'Löschen', 
+          style: 'destructive',
+          onPress: async () => {
+            await secureStorageService.deleteApiKey();
+            await loadAIKeyStatus();
+          }
+        }
+      ]
+    );
+  };
 
   const loadReferenceBalances = async () => {
     const vb = storageService.getReferenceBalance('volksbank');
@@ -417,6 +468,53 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     )}
                   </View>
                 )}
+              </View>
+            </View>
+
+            {/* AI Configuration Section */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Key size={16} color="#6b7280" />
+                <Text style={styles.sectionTitle}>KI Analyse (Gemini)</Text>
+              </View>
+              <View style={styles.aiKeyContainer}>
+                {hasAiApiKey ? (
+                  <View style={styles.keyStatusBox}>
+                    <View style={styles.keyStatusInfo}>
+                      <ShieldCheck size={18} color="#22c55e" />
+                      <Text style={styles.keyStatusText}>API-Key ist sicher hinterlegt</Text>
+                    </View>
+                    <TouchableOpacity onPress={handleDeleteAIKey} style={styles.deleteKeyButton}>
+                      <Trash2 size={14} color="#ef4444" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.keyInputRow}>
+                    <TextInput 
+                      style={styles.keyInput} 
+                      value={aiApiKey} 
+                      onChangeText={setAiApiKey} 
+                      placeholder="API-Key hier einfügen..." 
+                      secureTextEntry
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                    <TouchableOpacity 
+                      style={[styles.saveKeyButton, isSavingKey && styles.buttonDisabled]} 
+                      onPress={handleSaveAIKey}
+                      disabled={isSavingKey}
+                    >
+                      {isSavingKey ? (
+                        <ActivityIndicator size="small" color="#ffffff" />
+                      ) : (
+                        <Text style={styles.saveKeyButtonText}>Speichern</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
+                <Text style={styles.balanceHelpText}>
+                  Der Key wird nur lokal auf diesem Gerät verschlüsselt gespeichert.
+                </Text>
               </View>
             </View>
 
@@ -978,5 +1076,61 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     marginTop: 4,
     fontStyle: 'italic',
+  },
+  // AI Key styles
+  aiKeyContainer: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 10,
+    padding: 12,
+  },
+  keyInputRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  keyInput: {
+    flex: 1,
+    height: 40,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontSize: 13,
+    color: '#1f2937',
+  },
+  saveKeyButton: {
+    backgroundColor: '#0ea5e9',
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  saveKeyButtonText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  keyStatusBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+    borderRadius: 8,
+    padding: 10,
+  },
+  keyStatusInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  keyStatusText: {
+    fontSize: 13,
+    color: '#166534',
+    fontWeight: '500',
+  },
+  deleteKeyButton: {
+    padding: 4,
   },
 });
