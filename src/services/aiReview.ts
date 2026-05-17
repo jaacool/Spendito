@@ -68,10 +68,15 @@ class AIReviewService {
         : 'Unbekannt',
     }));
 
-    return `Du bist ein Finanzexperte für einen Hunde-Rettungsverein. 
+    return `Du bist ein Finanzexperte für einen Hunde-Rettungsverein in Deutschland. 
 Überprüfe die folgenden Transaktionen und ihre Kategorisierungen.
 
-Verfügbare Kategorien:
+WICHTIG:
+- Deine gesamte Antwort (insbesondere das Feld "reasoning") MUSS auf DEUTSCH sein.
+- Verwende in deiner Begründung ("reasoning") immer die DEUTSCHEN Bezeichnungen der Kategorien (z.B. "Tierarzt" statt "veterinary").
+- Die verfügbaren Kategorien und ihre deutschen Bezeichnungen sind unten aufgeführt.
+
+Verfügbare Kategorien (ID: Deutsche Bezeichnung):
 ${categoryList}
 
 Transaktionen zur Überprüfung:
@@ -84,7 +89,7 @@ Für jede Transaktion, antworte im JSON-Format:
       "transactionId": "...",
       "suggestedCategory": "...",
       "confidence": 0.0-1.0,
-      "reasoning": "Kurze Begründung",
+      "reasoning": "Kurze Begründung auf DEUTSCH unter Verwendung der DEUTSCHEN Kategoriebezeichnung",
       "needsReview": true/false
     }
   ]
