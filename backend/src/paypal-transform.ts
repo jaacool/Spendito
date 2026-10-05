@@ -91,6 +91,14 @@ export function transformPayPalTransactions(rawTransactions: any[]): ProxiedTran
     }
 
     const day = date ? date.split('T')[0] : today;
+    const base = {
+      date: day,
+      value_date: day,
+      currency,
+      counterparty_iban: payerInfo.email_address || null,
+      bank_id: 'paypal' as const,
+      account_number: 'paypal' as const,
+    };
     result.push({
       id: externalId,
       external_id: externalId,
@@ -105,6 +113,25 @@ export function transformPayPalTransactions(rawTransactions: any[]): ProxiedTran
       bank_id: 'paypal',
       account_number: 'paypal',
     });
+
+    // PayPal keeps its fee (e.g. on donations not sent as "Freunde & Familie")
+    // in fee_amount - transaction_amount is the gross amount. Without its own
+    // booking the fee was missing and the PayPal balance did not match.
+    const fee = parseFloat(txInfo.fee_amount?.value || '0');
+    if (Number.isFinite(fee) && fee !== 0) {
+      result.push({
+        ...base,
+        // Stable id: re-syncs recognise the fee and never add it twice
+        id: `${externalId}_fee`,
+        external_id: `${externalId}_fee`,
+        // Fees are always money leaving the account
+        amount: -Math.abs(fee),
+        currency: txInfo.fee_amount?.currency_code || currency,
+        counterparty_name: 'PayPal',
+        description: `PayPal-Gebühr (${description})`,
+        booking_text: 'PayPal: Gebühr',
+      });
+    }
   }
 
   return result;
