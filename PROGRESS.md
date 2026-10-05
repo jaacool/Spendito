@@ -19,7 +19,7 @@
 - [x] Return URL in PayPal Developer konfiguriert: `https://spendito-production.up.railway.app/api/paypal/callback`
 - [x] Railway Umgebungsvariablen gesetzt (PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET)
 
-### Volksbank FinTS Integration
+### Volksbank FinTS Integration (entfernt – ersetzt durch CSV-Import)
 - [x] FinTS-Server URLs aktualisiert auf neue Atruvia-Server (März 2024)
   - `fints2.atruvia.de` für Süddeutschland (BLZ 6xxxxx, 7xxxxx)
   - `fints1.atruvia.de` für Norddeutschland

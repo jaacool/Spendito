@@ -41,3 +41,6 @@ yarn-error.*
 /ios
 /android
 release/
+
+# Customer data for local debugging (never commit!)
+kundendaten/

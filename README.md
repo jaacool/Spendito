@@ -24,14 +24,16 @@ Eine moderne Finanz-App für Hunde-Rettungsvereine zur automatischen Kategorisie
   - Seitenmenü mit Jahresauswahl
   - Schneller Wechsel zwischen Jahren
 
-- **KI-Überprüfung (vorbereitet)**
-  - Quartalsweise Überprüfung der Kategorisierungen
-  - Vorschläge für Korrekturen
-  - Batch-Anwendung von Änderungen
+- **KI-Überprüfung (Google Gemini)**
+  - Prüft unsichere Kategorisierungen, Vorschläge einzeln oder gesammelt übernehmen
+  - Ohne API-Key: Prüfung mit den gelernten Regeln (wird angezeigt)
 
-- **Sparkassen-API (vorbereitet)**
-  - Interface für FinTS/HBCI Integration
-  - Automatischer Import von Kontobewegungen
+- **Datenquellen**
+  - Volksbank: CSV-Import (Einstellungen → Kontoverbindungen)
+  - PayPal: Verbindung über das Backend (`backend/`)
+  - Automatische Erkennung von Bank→PayPal-Überweisungen (keine Doppelzählung)
+
+- **Finanzamt-Export** (PDF/HTML) und **Datensicherung** (Export/Import)
 
 ### 🎨 Design
 
@@ -70,44 +72,7 @@ npx expo start --android
 
 ## Projektstruktur
 
-```
-Spendito/
-├── app/                    # Expo Router Screens
-│   ├── _layout.tsx         # Root Layout
-│   └── index.tsx           # Hauptscreen
-├── src/
-│   ├── components/         # UI-Komponenten
-│   │   ├── CategoryCard.tsx
-│   │   ├── TransactionItem.tsx
-│   │   ├── SummaryHeader.tsx
-│   │   ├── SideMenu.tsx
-│   │   └── ReviewModal.tsx
-│   ├── context/
-│   │   └── AppContext.tsx  # Globaler State
-│   ├── services/
-│   │   ├── categorization.ts  # Kategorisierungs-Engine
-│   │   ├── storage.ts         # Datenpersistenz
-│   │   ├── mockData.ts        # Demo-Daten Generator
-│   │   ├── bankApi.ts         # Sparkassen-API (vorbereitet)
-│   │   └── aiReview.ts        # KI-Review (vorbereitet)
-│   └── types/
-│       └── index.ts        # TypeScript Definitionen
-└── assets/                 # Icons & Bilder
-```
-
-## Nächste Schritte
-
-### Sparkassen-Integration
-
-1. FinTS/HBCI Bibliothek einbinden (z.B. `nodejs-fints`)
-2. Backend-Server für sichere Bank-Kommunikation
-3. TAN-Handling implementieren
-
-### KI-Integration
-
-1. OpenAI oder Claude API-Key einrichten
-2. `aiReviewService.configure()` aufrufen
-3. Quartalsweise Reviews automatisieren
+Siehe [docs/Architecture.md](docs/Architecture.md).
 
 ## Lizenz
 

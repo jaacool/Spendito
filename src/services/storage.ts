@@ -3,9 +3,40 @@ import { Transaction, YearSummary, CategorySummary, INCOME_CATEGORIES, EXPENSE_C
 import { backendApiService } from './backendApi';
 import { categorizationService } from './categorization';
 import { duplicateDetectionService } from './duplicateDetection';
+import { isCountedInTotals } from './transactionFilters';
+import { repairStoredTransactions, applyRestoredDescriptions } from './dataRepair';
 
 const TRANSACTIONS_KEY = '@spendito_transactions';
 const REFERENCE_BALANCES_KEY = '@spendito_reference_balances';
+// Unreadable transaction data is parked here instead of being overwritten
+const TRANSACTIONS_CORRUPT_BACKUP_KEY = 'spendito_transactions_corrupt_backup';
+
+/**
+ * Which account does a stored booking belong to?
+ * PayPal: marked by the PayPal proxy, or an external ID that is neither a bank CSV
+ * ID ("bank_...") nor belongs to a booking with a UUID id (old bank imports).
+ * Used on start AND by the cleanup in the settings - two different rules used to
+ * move the same bookings back and forth between the accounts.
+ */
+function detectSourceAccount(t: Transaction): SourceAccount {
+  const raw = t as any;
+  const isPayPal =
+    raw.bank_id === 'paypal' ||
+    raw.account_number === 'paypal' ||
+    (!!t.externalId && !t.externalId.startsWith('bank_') && !t.id.includes('-'));
+  return isPayPal ? 'paypal' : 'volksbank';
+}
+
+function assignSourceAccounts(transactions: Transaction[]): { transactions: Transaction[]; changed: number } {
+  let changed = 0;
+  const updated = transactions.map(t => {
+    const account = detectSourceAccount(t);
+    if (t.sourceAccount === account) return t;
+    changed++;
+    return { ...t, sourceAccount: account };
+  });
+  return { transactions: updated, changed };
+}
 
 class StorageService {
   private transactions: Transaction[] = [];
@@ -14,60 +45,70 @@ class StorageService {
     paypal: null,
   };
   private initialized = false;
+  private initPromise: Promise<void> | null = null;
 
   async initialize(force = false): Promise<void> {
     if (this.initialized && !force) return;
-    
+    // Parallel calls share one load (otherwise two loads could overwrite each other)
+    if (!this.initPromise) {
+      this.initPromise = this.load().finally(() => {
+        this.initPromise = null;
+      });
+    }
+    await this.initPromise;
+  }
+
+  private async load(): Promise<void> {
     try {
-      // Load local transactions
       const stored = await AsyncStorage.getItem(TRANSACTIONS_KEY);
       if (stored) {
-        let loadedTransactions = JSON.parse(stored);
-        
-        // AUTO-FIX based on DB Export analysis:
-        // 1. Ensure real PayPal API transactions stay in 'paypal'
-        // 2. Ensure Volksbank bank transfers (even if linked to PayPal) stay in 'volksbank'
-        let needsSave = false;
-        loadedTransactions = loadedTransactions.map((t: any) => {
-          const rawT = t as any;
-          
-          // Detection: PayPal API transactions always have a specific ID format or bank_id field
-          const isRealPayPalApiTx = 
-            rawT.bank_id === 'paypal' || 
-            rawT.account_number === 'paypal' ||
-            (t.externalId && !t.externalId.startsWith('bank_'));
+        let loadedTransactions: Transaction[] | null = null;
+        try {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) loadedTransactions = parsed;
+        } catch {
+          loadedTransactions = null;
+        }
 
-          if (isRealPayPalApiTx && t.sourceAccount !== 'paypal') {
-            needsSave = true;
-            return { ...t, sourceAccount: 'paypal' };
-          }
-          
-          if (!isRealPayPalApiTx && t.sourceAccount !== 'volksbank') {
-            // This was a Volksbank record wrongly moved to PayPal
-            needsSave = true;
-            return { ...t, sourceAccount: 'volksbank' };
-          }
+        if (!loadedTransactions) {
+          // Never lose data silently: park the unreadable data before anything is saved
+          console.error('[Storage] Stored transactions unreadable - backup kept');
+          await AsyncStorage.setItem(TRANSACTIONS_CORRUPT_BACKUP_KEY, stored);
+          loadedTransactions = [];
+        }
 
-          return t;
-        });
+        // Make sure every booking sits on the right account (Volksbank / PayPal)
+        const { transactions: assigned, changed: accountsChanged } = assignSourceAccounts(loadedTransactions);
 
-        this.transactions = loadedTransactions;
-        
-        if (needsSave) {
-          console.log('[Storage] Auto-corrected PayPal source assignments during initialization');
+        // Repair bookings damaged by the old duplicate detection and make sure
+        // stored duplicate flags match the current detection rules.
+        await categorizationService.initialize();
+        const repair = repairStoredTransactions(assigned);
+        this.transactions = repair.transactions;
+        if (repair.repairedCount > 0) {
+          console.log(`[Storage] Repaired ${repair.repairedCount} bank bookings wrongly marked as duplicate`);
+        }
+
+        if (accountsChanged || repair.changed) {
           await this.saveTransactions();
         }
+      } else {
+        this.transactions = [];
       }
 
       // Load reference balances
       const storedBalances = await AsyncStorage.getItem(REFERENCE_BALANCES_KEY);
       if (storedBalances) {
-        this.referenceBalances = JSON.parse(storedBalances);
+        try {
+          this.referenceBalances = { volksbank: null, paypal: null, ...JSON.parse(storedBalances) };
+        } catch {
+          console.error('[Storage] Stored reference balances unreadable');
+        }
       }
     } catch (error) {
       console.error('Failed to load storage data:', error);
     }
-    
+
     this.initialized = true;
   }
 
@@ -99,6 +140,24 @@ class StorageService {
       this.transactions[index] = { ...this.transactions[index], ...updates };
       await this.saveTransactions();
     }
+  }
+
+  /**
+   * Update many bookings and write the storage only once
+   * (one write per booking was very slow for large data sets).
+   */
+  async updateTransactions(updates: { id: string; changes: Partial<Transaction> }[]): Promise<void> {
+    if (updates.length === 0) return;
+    const byId = new Map(updates.map(u => [u.id, u.changes]));
+    this.transactions = this.transactions.map(t => {
+      const changes = byId.get(t.id);
+      return changes ? { ...t, ...changes } : t;
+    });
+    await this.saveTransactions();
+  }
+
+  getTransactionById(id: string): Transaction | undefined {
+    return this.transactions.find(t => t.id === id);
   }
 
   async deleteTransaction(id: string): Promise<void> {
@@ -151,7 +210,7 @@ class StorageService {
     // Calculate totals (exclude transfers and duplicates from statistics)
     transactions.forEach(t => {
       // Skip transfers and duplicates - they don't count as income or expense
-      if (t.category === 'transfer' || t.type === 'transfer' || t.isDuplicate) {
+      if (!isCountedInTotals(t)) {
         return;
       }
       
@@ -232,8 +291,9 @@ class StorageService {
     const targetDate = new Date(targetDateStr);
     const refDate = new Date(ref.date);
     
-    // Get all transactions for this account
-    const accountTx = this.transactions.filter(t => t.sourceAccount === account && !t.isDuplicate);
+    // Get ALL transactions for this account. Duplicate/transfer flags only matter for
+    // income/expense totals - a bank->PayPal transfer still changes the bank balance.
+    const accountTx = this.transactions.filter(t => t.sourceAccount === account);
 
     let calculatedBalance = ref.amount;
 
@@ -266,9 +326,10 @@ class StorageService {
     const ref = this.referenceBalances[account];
     if (!ref) return null;
 
-    // Dates for the year
-    const startOfYear = `${year}-01-01T00:00:00.000Z`;
-    const endOfYear = `${year}-12-31T23:59:59.999Z`;
+    // Year boundaries in local time - the same rule getTransactionsByYear uses
+    // (UTC boundaries put a booking at 31.12. 23:30 UTC into two different years)
+    const startOfYear = new Date(year, 0, 1, 0, 0, 0, 0).toISOString();
+    const endOfYear = new Date(year, 11, 31, 23, 59, 59, 999).toISOString();
 
     const startBalance = this.getBalanceAtDate(account, startOfYear);
     const endBalance = this.getBalanceAtDate(account, endOfYear);
@@ -306,10 +367,13 @@ class StorageService {
         sourceAccount = 'paypal';
       }
 
+      // With an external ID that ID alone decides. Comparing date+amount+text would
+      // drop real bookings that look identical (e.g. two equal membership fees).
       const isDuplicate = this.transactions.some(t => 
         t.id === tx.id || 
-        (tx.externalId && t.externalId === tx.externalId) ||
-        (t.date === tx.date && t.amount === tx.amount && t.description === tx.description && t.sourceAccount === sourceAccount)
+        (tx.externalId
+          ? t.externalId === tx.externalId
+          : t.date === tx.date && t.amount === tx.amount && t.description === tx.description && t.sourceAccount === sourceAccount)
       );
       
       if (!isDuplicate) {
@@ -342,7 +406,6 @@ class StorageService {
             sourceAccount: 'paypal',
             externalId: tx.externalId || tx.id,
             isGuthabenTransfer: rawTx.isGuthabenTransfer || false,
-            isDemo: tx.isDemo || false,
           };
         } else {
           finalTx = { ...tx, sourceAccount };
@@ -365,44 +428,33 @@ class StorageService {
   }
 
   /**
+   * Put original bank texts back (from a CSV re-import) into bookings whose
+   * text was overwritten by an older app version. Returns the number restored.
+   */
+  async restoreDescriptions(restored: { externalId: string; description: string }[]): Promise<number> {
+    await this.initialize();
+    const result = applyRestoredDescriptions(this.transactions, restored);
+    if (result.restoredCount > 0) {
+      this.transactions = result.transactions;
+      await this.saveTransactions();
+    }
+    return result.restoredCount;
+  }
+
+  /**
    * FIX: Clean up wrongly assigned transactions
    * Moves PayPal transactions that were wrongly marked as 'volksbank' to 'paypal'
    */
   async cleanupWronglyAssignedTransactions(): Promise<number> {
-    let fixCount = 0;
-    console.log(`[Storage] Starting cleanup scan for ${this.transactions.length} transactions...`);
-    
-    this.transactions = this.transactions.map(t => {
-      const rawT = t as any;
-      
-      // Detection: PayPal API transactions always have a specific ID format or bank_id field
-      const isRealPayPalApiTx = 
-        rawT.bank_id === 'paypal' || 
-        rawT.account_number === 'paypal' ||
-        (t.externalId && !t.externalId.startsWith('bank_') && !t.id.includes('-')); // Volksbank IDs use UUIDs with dashes
-
-      if (isRealPayPalApiTx && t.sourceAccount !== 'paypal') {
-        fixCount++;
-        return { ...t, sourceAccount: 'paypal' };
-      }
-      
-      if (!isRealPayPalApiTx && t.sourceAccount !== 'volksbank') {
-        // This was a Volksbank record wrongly moved to PayPal
-        fixCount++;
-        return { ...t, sourceAccount: 'volksbank' };
-      }
-
-      return t;
-    });
-
-    if (fixCount > 0) {
+    const { transactions, changed } = assignSourceAccounts(this.transactions);
+    if (changed > 0) {
+      this.transactions = transactions;
       await this.saveTransactions();
-      console.log(`[Storage] Success: Cleaned up ${fixCount} transactions.`);
-    } else {
-      console.log(`[Storage] Cleanup scan finished. No misassigned transactions found.`);
+      console.log(`[Storage] Moved ${changed} bookings to the correct account`);
     }
-    return fixCount;
+    return changed;
   }
+
 }
 
 export const storageService = new StorageService();

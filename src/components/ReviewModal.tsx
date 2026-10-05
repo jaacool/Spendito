@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -22,6 +22,9 @@ interface ReviewModalProps {
   availableYears: number[];
 }
 
+// Shown for categories unknown to this version (e.g. old or invalid data)
+const UNKNOWN_CATEGORY_INFO = { labelDe: 'Unbekannt', color: '#6b7280' };
+
 export function ReviewModal({ isOpen, onClose, onApplyChange, selectedYear, availableYears }: ReviewModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [summary, setSummary] = useState<QuarterlyReviewSummary | null>(null);
@@ -29,6 +32,10 @@ export function ReviewModal({ isOpen, onClose, onApplyChange, selectedYear, avai
   const [reviewYear, setReviewYear] = useState<number>(selectedYear);
   const [showYearPicker, setShowYearPicker] = useState(false);
   const [yearTransactions, setYearTransactions] = useState<Transaction[]>([]);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  // Only the newest analysis may write its result (switching years quickly
+  // used to show the result of the wrong year)
+  const latestRequestRef = useRef(0);
 
   useEffect(() => {
     if (isOpen) {
@@ -47,19 +54,20 @@ export function ReviewModal({ isOpen, onClose, onApplyChange, selectedYear, avai
   };
 
   const performReviewWithTransactions = async (txList: Transaction[], year: number) => {
+    const requestId = ++latestRequestRef.current;
     setIsLoading(true);
     setSummary(null);
+    setApplyError(null);
     setAppliedChanges(new Set());
     
     try {
       const periodLabel = `Jahr ${year}`;
-      // Review ALL transactions, not just unconfirmed ones
       const result = await aiReviewService.performQuarterlyReview(txList, periodLabel);
-      setSummary(result);
+      if (requestId === latestRequestRef.current) setSummary(result);
     } catch (error) {
       console.error('Review failed:', error);
     } finally {
-      setIsLoading(false);
+      if (requestId === latestRequestRef.current) setIsLoading(false);
     }
   };
 
@@ -75,9 +83,14 @@ export function ReviewModal({ isOpen, onClose, onApplyChange, selectedYear, avai
   };
 
   const handleApplyChange = async (result: ReviewResult) => {
-    if (result.suggestedCategory !== result.originalCategory) {
-      await aiReviewService.applySuggestedChanges([result], yearTransactions, onApplyChange);
+    if (result.suggestedCategory === result.originalCategory) return;
+    setApplyError(null);
+    try {
+      await aiReviewService.applySuggestedChanges([result], onApplyChange);
       setAppliedChanges(prev => new Set([...prev, result.transactionId]));
+    } catch (error) {
+      console.error('Apply failed:', error);
+      setApplyError('Die Änderung konnte nicht gespeichert werden. Bitte erneut versuchen.');
     }
   };
 
@@ -90,13 +103,17 @@ export function ReviewModal({ isOpen, onClose, onApplyChange, selectedYear, avai
       !appliedChanges.has(r.transactionId)
     );
 
-    if (toApply.length > 0) {
-      await aiReviewService.applySuggestedChanges(toApply, yearTransactions, onApplyChange);
-      setAppliedChanges(prev => {
-        const next = new Set(prev);
-        toApply.forEach(r => next.add(r.transactionId));
-        return next;
-      });
+    // Apply one by one, so the list shows exactly what was saved even if one fails
+    setApplyError(null);
+    for (const result of toApply) {
+      try {
+        await aiReviewService.applySuggestedChanges([result], onApplyChange);
+        setAppliedChanges(prev => new Set([...prev, result.transactionId]));
+      } catch (error) {
+        console.error('Apply failed:', error);
+        setApplyError('Nicht alle Änderungen konnten gespeichert werden. Bitte erneut versuchen.');
+        break;
+      }
     }
   };
 
@@ -179,6 +196,20 @@ export function ReviewModal({ isOpen, onClose, onApplyChange, selectedYear, avai
             </View>
           ) : summary ? (
             <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+              {/* Hint, e.g. AI not used (no key, quota, network) */}
+              {summary.notice && (
+                <View style={styles.noticeBox}>
+                  <AlertCircle size={16} color="#b45309" />
+                  <Text style={styles.noticeText}>{summary.notice}</Text>
+                </View>
+              )}
+              {applyError && (
+                <View style={[styles.noticeBox, styles.errorBox]}>
+                  <AlertCircle size={16} color="#b91c1c" />
+                  <Text style={[styles.noticeText, styles.errorBoxText]}>{applyError}</Text>
+                </View>
+              )}
+
               {/* Summary Stats */}
               <View style={styles.statsContainer}>
                 <View style={styles.statCard}>
@@ -209,8 +240,8 @@ export function ReviewModal({ isOpen, onClose, onApplyChange, selectedYear, avai
                     const transaction = yearTransactions.find((t: Transaction) => t.id === result.transactionId);
                     if (!transaction) return null;
 
-                    const originalInfo = CATEGORY_INFO[result.originalCategory];
-                    const suggestedInfo = CATEGORY_INFO[result.suggestedCategory];
+                    const originalInfo = CATEGORY_INFO[result.originalCategory] ?? UNKNOWN_CATEGORY_INFO;
+                    const suggestedInfo = CATEGORY_INFO[result.suggestedCategory] ?? UNKNOWN_CATEGORY_INFO;
 
                     return (
                       <View key={result.transactionId} style={styles.suggestionCard}>
@@ -528,6 +559,26 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#22c55e',
+  },
+  noticeBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: '#fffbeb',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  noticeText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#92400e',
+  },
+  errorBox: {
+    backgroundColor: '#fef2f2',
+  },
+  errorBoxText: {
+    color: '#991b1b',
   },
   errorContainer: {
     flex: 1,

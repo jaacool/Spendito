@@ -1,12 +1,17 @@
+// File: src/services/csvImport.ts
 /**
  * CSV Import Service
- * 
+ *
  * Parses Volksbank CSV exports and imports transactions.
- * Handles PayPal duplicate detection to avoid double-counting.
+ * PayPal transfers are imported as internal transfers; the link to the
+ * matching PayPal booking is done later by duplicateDetectionService.
  */
 
 import { Transaction } from '../types';
 import { categorizationService } from './categorization';
+import { duplicateDetectionService } from './duplicateDetection';
+import { parseCSV, parseGermanDate, parseGermanAmount, decodeCSVBuffer } from './csvParser';
+
 // Generate UUID without external dependency
 function generateUUID(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -38,7 +43,7 @@ const CSV_COLUMNS = {
   MANDATE_REF: 17,
 };
 
-// PayPal identifiers for duplicate detection
+// PayPal identifiers for detecting bank<->PayPal transfers
 const PAYPAL_IDENTIFIERS = {
   NAME: 'PayPal Europe S.a.r.l. et Cie S.C.A',
   IBAN: 'LU89751000135104200E',
@@ -54,37 +59,13 @@ export interface CSVImportResult {
   skippedDuplicates: number;
   errors: string[];
   transactions: Transaction[];
+  // Original bank texts for already stored bookings whose description was
+  // overwritten by an older app version (matched via externalId)
+  restoredDescriptions: { externalId: string; description: string }[];
 }
 
 export interface CSVParseOptions {
   markPayPalAsLinked?: boolean;  // Mark PayPal transfers as linked (default: true)
-}
-
-/**
- * Parse German date format (DD.MM.YYYY) to ISO string
- */
-function parseGermanDate(dateStr: string): string {
-  if (!dateStr) return new Date().toISOString();
-  
-  const parts = dateStr.split('.');
-  if (parts.length !== 3) return new Date().toISOString();
-  
-  const [day, month, year] = parts;
-  return new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`).toISOString();
-}
-
-/**
- * Parse German amount format (1.234,56 or -1.234,56) to number
- */
-function parseGermanAmount(amountStr: string): number {
-  if (!amountStr) return 0;
-  
-  // Remove thousand separators (.) and replace decimal comma with dot
-  const normalized = amountStr
-    .replace(/\./g, '')
-    .replace(',', '.');
-  
-  return parseFloat(normalized) || 0;
 }
 
 /**
@@ -95,15 +76,13 @@ function isPayPalTransfer(row: string[]): boolean {
   const counterpartyIban = row[CSV_COLUMNS.COUNTERPARTY_IBAN] || '';
   const counterpartyBic = row[CSV_COLUMNS.COUNTERPARTY_BIC] || '';
   const purpose = row[CSV_COLUMNS.PURPOSE] || '';
-  
-  // Check if it's PayPal
-  const isPayPal = 
+
+  return (
     counterpartyName.includes('PayPal') ||
     counterpartyIban === PAYPAL_IDENTIFIERS.IBAN ||
     counterpartyBic === PAYPAL_IDENTIFIERS.BIC ||
-    PAYPAL_IDENTIFIERS.PURPOSE_PATTERN.test(purpose);
-  
-  return isPayPal;
+    PAYPAL_IDENTIFIERS.PURPOSE_PATTERN.test(purpose)
+  );
 }
 
 /**
@@ -116,52 +95,18 @@ function extractPayPalReference(purpose: string): string | null {
 }
 
 /**
- * Generate a unique external ID for a transaction
+ * Generate the base external ID of a bank row.
+ * WARNING: Do not change this format - already imported bookings are matched by it.
+ * Identical rows (same date, amount, name, purpose) share this base ID and are
+ * told apart by an occurrence suffix in importVolksbankCSV.
  */
-function generateExternalId(row: string[]): string {
+function generateBaseExternalId(row: string[]): string {
   const date = row[CSV_COLUMNS.BOOKING_DATE];
   const amount = row[CSV_COLUMNS.AMOUNT];
   const counterparty = row[CSV_COLUMNS.COUNTERPARTY_NAME] || 'unknown';
   const purpose = row[CSV_COLUMNS.PURPOSE] || '';
-  
-  // Create a hash-like ID from the transaction details
-  return `bank_${date}_${amount}_${counterparty.substring(0, 20)}_${purpose.substring(0, 30)}`.replace(/[^a-zA-Z0-9_-]/g, '');
-}
 
-/**
- * Parse CSV content into rows
- */
-function parseCSV(content: string): string[][] {
-  const lines = content.split('\n');
-  const rows: string[][] = [];
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    
-    // Split by semicolon, handling quoted fields
-    const row: string[] = [];
-    let current = '';
-    let inQuotes = false;
-    
-    for (let j = 0; j < line.length; j++) {
-      const char = line[j];
-      
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === ';' && !inQuotes) {
-        row.push(current.trim());
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    row.push(current.trim());
-    
-    rows.push(row);
-  }
-  
-  return rows;
+  return `bank_${date}_${amount}_${counterparty.substring(0, 20)}_${purpose.substring(0, 30)}`.replace(/[^a-zA-Z0-9_-]/g, '');
 }
 
 /**
@@ -173,9 +118,9 @@ export async function importVolksbankCSV(
   options: CSVParseOptions = {}
 ): Promise<CSVImportResult> {
   const { markPayPalAsLinked = true } = options;
-  
+
   await categorizationService.initialize();
-  
+
   const result: CSVImportResult = {
     success: false,
     totalRows: 0,
@@ -184,65 +129,81 @@ export async function importVolksbankCSV(
     skippedDuplicates: 0,
     errors: [],
     transactions: [],
+    restoredDescriptions: [],
   };
-  
+
   try {
     const rows = parseCSV(csvContent);
-    
+
     if (rows.length < 2) {
       result.errors.push('CSV-Datei enthält keine Daten');
       return result;
     }
-    
+
     // Skip header row
     const dataRows = rows.slice(1);
     result.totalRows = dataRows.length;
-    
-    // Create a set of existing external IDs for duplicate detection
-    const existingIds = new Set(
-      existingTransactions
-        .filter(t => t.externalId)
-        .map(t => t.externalId)
-    );
-    
-    for (const row of dataRows) {
+
+    // Existing bookings by external ID (for duplicate check and text restore)
+    const existingByExternalId = new Map<string, Transaction>();
+    existingTransactions.forEach(t => {
+      if (t.externalId) existingByExternalId.set(t.externalId, t);
+    });
+
+    // Counts identical rows within this file. The 1st occurrence keeps the old ID
+    // (stays compatible with earlier imports), the 2nd gets "__2" and so on.
+    // Before this, two identical bookings (e.g. two equal membership fees on the
+    // same day) were imported only once.
+    const occurrences = new Map<string, number>();
+
+    dataRows.forEach((row, index) => {
+      const lineNumber = index + 2; // +1 header, +1 for 1-based counting
+
       if (row.length < 12) {
-        result.errors.push(`Zeile übersprungen: Nicht genug Spalten (${row.length})`);
-        continue;
+        result.errors.push(`Zeile ${lineNumber} übersprungen: Nicht genug Spalten (${row.length})`);
+        return;
       }
-      
-      const isPayPal = isPayPalTransfer(row);
-      const paypalRef = isPayPal ? extractPayPalReference(row[CSV_COLUMNS.PURPOSE] || '') : null;
-      
-      // Generate external ID
-      const externalId = generateExternalId(row);
-      
-      // Check for duplicates
-      if (existingIds.has(externalId)) {
-        result.skippedDuplicates++;
-        continue;
-      }
-      
-      // Parse transaction data
-      const amount = parseGermanAmount(row[CSV_COLUMNS.AMOUNT]);
-      const date = parseGermanDate(row[CSV_COLUMNS.BOOKING_DATE]);
+
+      const baseId = generateBaseExternalId(row);
+      const occurrence = (occurrences.get(baseId) || 0) + 1;
+      occurrences.set(baseId, occurrence);
+      const externalId = occurrence === 1 ? baseId : `${baseId}__${occurrence}`;
+
       const counterparty = row[CSV_COLUMNS.COUNTERPARTY_NAME] || 'Unbekannt';
       const purpose = row[CSV_COLUMNS.PURPOSE] || '';
       const bookingText = row[CSV_COLUMNS.BOOKING_TEXT] || '';
-      
-      // Build description
       const description = purpose || bookingText || counterparty;
-      
-      // Categorize the transaction
-      let category: any;
+
+      // Already imported: skip, but restore the original text if it was lost
+      const existing = existingByExternalId.get(externalId);
+      if (existing) {
+        if (duplicateDetectionService.hasLostDescription(existing)) {
+          result.restoredDescriptions.push({ externalId, description });
+        }
+        result.skippedDuplicates++;
+        return;
+      }
+
+      // Parse transaction data - invalid values are reported, never guessed
+      const amount = parseGermanAmount(row[CSV_COLUMNS.AMOUNT]);
+      const date = parseGermanDate(row[CSV_COLUMNS.BOOKING_DATE]);
+      if (amount === null || date === null) {
+        result.errors.push(
+          `Zeile ${lineNumber} übersprungen: ${date === null ? 'Ungültiges Datum' : 'Ungültiger Betrag'} (${counterparty})`
+        );
+        return;
+      }
+
+      const isPayPal = isPayPalTransfer(row);
+      const paypalRef = isPayPal ? extractPayPalReference(purpose) : null;
+
+      let category: Transaction['category'];
       let confidence: number;
-      let txType: 'income' | 'expense' | 'transfer';
-      
+      let txType: Transaction['type'];
+
       if (isPayPal) {
-        // PayPal bank transfers are internal movements
-        // They are now ALWAYS imported to keep the bank balance correct.
-        // We categorize them as transfer. The duplicateDetectionService will 
-        // handle the link to the actual PayPal transaction later.
+        // PayPal bank transfers are internal movements. They are ALWAYS imported to
+        // keep the bank balance correct, but never count as income/expense.
         category = 'transfer';
         confidence = 0.95;
         txType = 'transfer';
@@ -250,11 +211,10 @@ export async function importVolksbankCSV(
         const catResult = categorizationService.categorize(description, amount, counterparty);
         category = catResult.category;
         confidence = catResult.confidence;
-        // Check if categorization detected a transfer
         txType = category === 'transfer' ? 'transfer' : (amount >= 0 ? 'income' : 'expense');
       }
-      
-      const transaction: Transaction = {
+
+      result.transactions.push({
         id: generateUUID(),
         date,
         amount,
@@ -266,67 +226,22 @@ export async function importVolksbankCSV(
         confidence,
         sourceAccount: 'volksbank',
         externalId,
-        // Mark PayPal transfers specially
         ...(isPayPal && markPayPalAsLinked && paypalRef ? { linkedPayPalRef: paypalRef } : {}),
-      };
-      
-      result.transactions.push(transaction);
-      existingIds.add(externalId);
+      });
       result.imported++;
-    }
-    
+    });
+
     result.success = true;
   } catch (error: any) {
-    result.errors.push(`Parsing-Fehler: ${error.message}`);
+    result.errors.push(`Die Datei konnte nicht gelesen werden: ${error?.message || 'Unbekannter Fehler'}`);
   }
-  
-  return result;
-}
 
-/**
- * Detect potential PayPal duplicates between bank and PayPal transactions
- * Returns transactions that appear in both sources
- */
-export function detectPayPalDuplicates(
-  bankTransactions: Transaction[],
-  paypalTransactions: Transaction[]
-): { bankTx: Transaction; paypalTx: Transaction; confidence: number }[] {
-  const duplicates: { bankTx: Transaction; paypalTx: Transaction; confidence: number }[] = [];
-  
-  // PayPal bank transfers are typically:
-  // - Negative amounts from bank (money going to PayPal)
-  // - Positive amounts from PayPal (money coming from PayPal to bank)
-  
-  for (const bankTx of bankTransactions) {
-    // Only check PayPal-related bank transactions
-    if (!bankTx.counterparty?.includes('PayPal')) continue;
-    
-    for (const paypalTx of paypalTransactions) {
-      // Check if amounts match (opposite signs)
-      // Bank: -100 (outgoing) should match PayPal: -100 (payment made via PayPal)
-      // Bank: +100 (incoming) should match PayPal: +100 (refund or transfer)
-      
-      const amountMatch = Math.abs(bankTx.amount) === Math.abs(paypalTx.amount);
-      
-      // Check if dates are close (within 3 days due to processing time)
-      const bankDate = new Date(bankTx.date);
-      const paypalDate = new Date(paypalTx.date);
-      const daysDiff = Math.abs((bankDate.getTime() - paypalDate.getTime()) / (1000 * 60 * 60 * 24));
-      const dateMatch = daysDiff <= 3;
-      
-      if (amountMatch && dateMatch) {
-        const confidence = dateMatch && amountMatch ? 0.9 : 0.5;
-        duplicates.push({ bankTx, paypalTx, confidence });
-      }
-    }
-  }
-  
-  return duplicates;
+  return result;
 }
 
 export const csvImportService = {
   importVolksbankCSV,
-  detectPayPalDuplicates,
+  decodeCSVBuffer,
   parseGermanDate,
   parseGermanAmount,
   isPayPalTransfer,

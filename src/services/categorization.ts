@@ -1,7 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Category, CategoryRule, Transaction, INCOME_CATEGORIES, EXPENSE_CATEGORIES, TRANSFER_CATEGORIES } from '../types';
+import { duplicateDetectionService } from './duplicateDetection';
 
 const RULES_STORAGE_KEY = '@spendito_category_rules';
+// Unreadable rules are parked here instead of being overwritten by the defaults
+const RULES_CORRUPT_BACKUP_KEY = '@spendito_category_rules_corrupt_backup';
+// Learned rules can be boosted, but never above this priority
+const MAX_RULE_PRIORITY = 300;
+// Rule statistics are written at most every X ms (categorize runs hundreds of times per import)
+const SAVE_DEBOUNCE_MS = 1000;
 
 // Default rules for initial categorization
 const DEFAULT_RULES: Omit<CategoryRule, 'id' | 'createdAt' | 'matchCount'>[] = [
@@ -25,16 +32,35 @@ const DEFAULT_RULES: Omit<CategoryRule, 'id' | 'createdAt' | 'matchCount'>[] = [
 class CategorizationService {
   private rules: CategoryRule[] = [];
   private initialized = false;
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
   async initialize(force = false): Promise<void> {
     if (this.initialized && !force) return;
     
     try {
       // 1. Try to load local rules first
+      // `force` only means "reload from storage" - it must NEVER reset the
+      // learned rules to the defaults (that used to wipe all user corrections).
       const stored = await AsyncStorage.getItem(RULES_STORAGE_KEY);
-      if (stored && !force) {
-        this.rules = JSON.parse(stored);
-        // Ensure transfer rules exist (migration for existing users)
+      let parsed: CategoryRule[] | null = null;
+      if (stored) {
+        try {
+          const value = JSON.parse(stored);
+          if (Array.isArray(value)) parsed = value;
+        } catch {
+          parsed = null;
+        }
+        if (!parsed) {
+          // Never silently overwrite the user's learned rules - keep a copy
+          console.error('[Categorization] Stored rules unreadable - backup kept, using defaults');
+          await AsyncStorage.setItem(RULES_CORRUPT_BACKUP_KEY, stored);
+        }
+      }
+      
+      if (parsed) {
+        this.rules = parsed;
+        // Repair rules damaged by older versions, then ensure transfer rules exist
+        if (this.repairLearnedRules()) await this.saveRules();
         await this.ensureTransferRules();
       } else {
         // Initialize with default rules
@@ -55,11 +81,26 @@ class CategorizationService {
   }
 
   private async saveRules(): Promise<void> {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
     try {
       await AsyncStorage.setItem(RULES_STORAGE_KEY, JSON.stringify(this.rules));
     } catch (error) {
       console.error('Failed to save categorization rules:', error);
     }
+  }
+
+  /**
+   * Save match statistics later in one go instead of once per categorized booking.
+   */
+  private scheduleSave(): void {
+    if (this.saveTimer) return;
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      this.saveRules();
+    }, SAVE_DEBOUNCE_MS);
   }
 
   categorize(
@@ -108,7 +149,7 @@ class CategorizationService {
           const isTransferCategory = TRANSFER_CATEGORIES.includes(rule.category as any);
           if (isTransferCategory) {
             rule.matchCount++;
-            this.saveRules();
+            this.scheduleSave();
             
             // Boost confidence if multiple factors matched
             let confidenceBoost = 0;
@@ -128,7 +169,7 @@ class CategorizationService {
           if (isExpense === isExpenseCategory) {
             // Increase match count for learning
             rule.matchCount++;
-            this.saveRules();
+            this.scheduleSave();
             
             // Confidence based on: match count + priority + multi-factor boost
             let confidenceBoost = 0;
@@ -198,24 +239,36 @@ class CategorizationService {
       .split(/\s+/)
       .filter(word => word.length > 3) : [];
     
-    if (words.length === 0 && counterpartyWords.length === 0 && amount === undefined) return;
+    // Without any keyword there is nothing to learn - an amount alone is no signal
+    // (it used to create a ".*" rule that took over every booking with a similar amount)
+    if (words.length === 0 && counterpartyWords.length === 0) return;
     
-    // Create patterns
-    const pattern = words.length > 0 ? words.slice(0, 3).join('|') : '.*';
+    // Create patterns. Without description words the rule may only match by counterparty:
+    // "(?!)" is a regex that never matches.
+    const pattern = words.length > 0 ? words.slice(0, 3).join('|') : '(?!)';
     const counterpartyPattern = counterpartyWords.length > 0 ? counterpartyWords.slice(0, 2).join('|') : undefined;
     
-    // Check if similar rule exists (by category + pattern OR counterparty)
+    // A newer correction wins: drop learned rules with the same keywords but another category
+    this.rules = this.rules.filter(r =>
+      !(r.isUserDefined && r.category !== correctCategory &&
+        r.pattern === pattern && r.counterpartyPattern === counterpartyPattern)
+    );
+    
+    // Check if a similar LEARNED rule exists (by category + pattern OR counterparty).
+    // Default rules are never changed - otherwise e.g. the "Spende" rule got an amount
+    // range and donations outside of it were no longer recognized.
     const existingRule = this.rules.find(r => 
+      r.isUserDefined &&
       r.category === correctCategory && (
-        words.some(w => r.pattern.includes(w)) ||
+        words.some(w => r.pattern.split('|').includes(w)) ||
         (counterpartyPattern && r.counterpartyPattern && 
-         counterpartyWords.some(w => r.counterpartyPattern!.includes(w)))
+         counterpartyWords.some(w => r.counterpartyPattern!.split('|').includes(w)))
       )
     );
     
     if (existingRule) {
       // Boost existing rule
-      existingRule.priority += 10;
+      existingRule.priority = Math.min(existingRule.priority + 10, MAX_RULE_PRIORITY);
       existingRule.matchCount++;
       
       // Update counterparty pattern if we have new info
@@ -265,7 +318,7 @@ class CategorizationService {
     } else {
       // Create new rule with initial amount stats
       const newRule: CategoryRule = {
-        id: `rule_${Date.now()}`,
+        id: `rule_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         pattern,
         counterpartyPattern,
         category: correctCategory,
@@ -315,6 +368,40 @@ class CategorizationService {
   }
 
   /**
+   * Repair rules written by older versions (idempotent, returns true if changed):
+   *  - default rules got amount ranges and ever growing priority from learning
+   *  - learned rules without keywords used the pattern ".*" (matches everything)
+   */
+  private repairLearnedRules(): boolean {
+    let changed = false;
+    const repaired: CategoryRule[] = [];
+    
+    for (const rule of this.rules) {
+      if (!rule.isUserDefined) {
+        const original = DEFAULT_RULES.find(d => d.pattern === rule.pattern && d.category === rule.category);
+        const needsReset =
+          rule.minAmount !== undefined || rule.maxAmount !== undefined || rule.amountStats !== undefined ||
+          rule.counterpartyPattern !== undefined || (original && rule.priority !== original.priority);
+        if (needsReset) {
+          const { minAmount, maxAmount, amountStats, counterpartyPattern, ...rest } = rule;
+          repaired.push({ ...rest, priority: original ? original.priority : rule.priority });
+          changed = true;
+          continue;
+        }
+      } else if (rule.pattern === '.*') {
+        changed = true;
+        // Keep it only if it can still match by counterparty
+        if (rule.counterpartyPattern) repaired.push({ ...rule, pattern: '(?!)' });
+        continue;
+      }
+      repaired.push(rule);
+    }
+    
+    this.rules = repaired;
+    return changed;
+  }
+
+  /**
    * Ensure transfer rules exist (migration for existing users)
    */
   private async ensureTransferRules(): Promise<void> {
@@ -347,22 +434,21 @@ class CategorizationService {
         continue;
       }
       
+      // Skip transfers detected from bank/PayPal structure (not from text rules).
+      // Re-categorizing them would turn an internal transfer into income/expense
+      // and count the same money twice.
+      if (tx.isDuplicate || tx.isGuthabenTransfer || duplicateDetectionService.isBankPayPalTransfer(tx)) {
+        continue;
+      }
+      
       // Re-categorize
       const { category, confidence } = this.categorize(tx.description, tx.amount, tx.counterparty);
       
-      // Only update if category changed
+      // Only update if category changed (return a copy, never mutate the stored object)
       if (category !== tx.category) {
-        tx.category = category;
-        tx.confidence = confidence;
-        // Update type if it's a transfer
-        if (category === 'transfer') {
-          tx.type = 'transfer';
-        } else if (tx.amount >= 0) {
-          tx.type = 'income';
-        } else {
-          tx.type = 'expense';
-        }
-        updated.push(tx);
+        const type: Transaction['type'] =
+          category === 'transfer' ? 'transfer' : tx.amount >= 0 ? 'income' : 'expense';
+        updated.push({ ...tx, category, confidence, type });
       }
     }
     

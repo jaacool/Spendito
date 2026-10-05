@@ -2,8 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Transaction, YearSummary, Category } from '../types';
 import { storageService } from '../services/storage';
 import { categorizationService } from '../services/categorization';
-import { duplicateDetectionService } from '../services/duplicateDetection';
-import { generateMockData } from '../services/mockData';
+import { backupService } from '../services/backup';
 
 interface AppContextType {
   // State
@@ -22,7 +21,6 @@ interface AppContextType {
   updateTransactionCategory: (id: string, category: Category) => Promise<void>;
   confirmTransaction: (id: string) => Promise<void>;
   refreshData: () => Promise<void>;
-  loadMockData: () => Promise<void>;
   setReferenceBalance: (account: 'volksbank' | 'paypal', amount: number) => Promise<void>;
   cleanupTransactions: () => Promise<void>;
   exportDatabase: () => Promise<void>;
@@ -47,12 +45,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         await categorizationService.initialize();
         await storageService.initialize();
         
-        const years = storageService.getAvailableYears();
-        if (years.length > 0) {
-          setAvailableYears(years);
-          updateYearData(selectedYear);
-        }
-        // No mock data - start with empty state
+        // Year data is loaded by the effect below as soon as isLoading is false
       } catch (error) {
         console.error('Failed to initialize:', error);
       } finally {
@@ -70,80 +63,62 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [selectedYear, isLoading]);
 
   function updateYearData(year: number) {
-    let yearTransactions = storageService.getTransactionsByYear(year);
-    
-    // Auto-mark duplicates and establish links between accounts
-    yearTransactions = duplicateDetectionService.markDuplicates(yearTransactions);
-    
-    setTransactions(yearTransactions);
+    // Duplicate flags are kept up to date in storage (on start and on import),
+    // so the list and the totals are always based on the same data.
+    setTransactions(storageService.getTransactionsByYear(year));
     setYearSummary(storageService.getYearSummary(year));
     setAvailableYears(storageService.getAvailableYears());
   }
 
-  async function loadMockDataInternal() {
-    const mockTransactions = await generateMockData();
-    await storageService.importTransactions(mockTransactions);
-    const years = storageService.getAvailableYears();
-    setAvailableYears(years);
-    if (years.length > 0) {
-      setSelectedYear(years[0]);
-      updateYearData(years[0]);
-    }
-  }
-
   async function updateTransactionCategory(id: string, category: Category) {
-    const transaction = transactions.find(t => t.id === id);
-    if (transaction) {
-      // Determine the correct type based on category
-      let newType: 'income' | 'expense' | 'transfer' = transaction.type;
-      if (category === 'transfer') {
-        newType = 'transfer';
-      } else if (transaction.amount >= 0) {
-        newType = 'income';
-      } else {
-        newType = 'expense';
-      }
-      
-      await storageService.updateTransaction(id, {
-        category,
-        type: newType,
-        isManuallyCategized: true,
-        isUserConfirmed: true,
-        confidence: 1.0,
-      });
-      
-      // Learn from correction (including amount and counterparty)
-      await categorizationService.learnFromCorrection(
-        transaction.description, 
-        category, 
-        transaction.amount,
-        transaction.counterparty
-      );
-      
-      // Re-categorize all unconfirmed transactions based on updated rules
-      const allTransactions = storageService.getAllTransactions();
-      const recategorized = categorizationService.recategorizeUnconfirmed(allTransactions);
-      
-      // Save re-categorized transactions
-      for (const tx of recategorized) {
-        await storageService.updateTransaction(tx.id, {
-          category: tx.category,
-          type: tx.type,
-          confidence: tx.confidence,
-        });
-      }
-      
-      if (recategorized.length > 0) {
-        console.log(`[AppContext] Re-categorized ${recategorized.length} unconfirmed transactions`);
-      }
-      
-      // Refresh data
-      updateYearData(selectedYear);
+    // Look the booking up in storage, not only in the selected year
+    // (the review can work on another year than the one shown)
+    const transaction = storageService.getTransactionById(id);
+    if (!transaction) {
+      throw new Error('Die Buchung wurde nicht gefunden. Bitte lade die Daten neu.');
     }
+
+    // Determine the correct type based on category
+    const newType: Transaction['type'] =
+      category === 'transfer' ? 'transfer' : transaction.amount >= 0 ? 'income' : 'expense';
+
+    await storageService.updateTransaction(id, {
+      category,
+      type: newType,
+      isManuallyCategized: true,
+      isUserConfirmed: true,
+      confidence: 1.0,
+    });
+
+    // Learn from correction (including amount and counterparty)
+    await categorizationService.learnFromCorrection(
+      transaction.description,
+      category,
+      transaction.amount,
+      transaction.counterparty
+    );
+
+    // Re-categorize all unconfirmed transactions based on updated rules
+    const recategorized = categorizationService.recategorizeUnconfirmed(storageService.getAllTransactions());
+
+    // Save re-categorized transactions (one storage write for all)
+    await storageService.updateTransactions(
+      recategorized.map(tx => ({
+        id: tx.id,
+        changes: { category: tx.category, type: tx.type, confidence: tx.confidence },
+      }))
+    );
+
+    if (recategorized.length > 0) {
+      console.log(`[AppContext] Re-categorized ${recategorized.length} unconfirmed transactions`);
+    }
+
+    // Refresh data
+    updateYearData(selectedYear);
   }
 
   async function confirmTransaction(id: string) {
-    const transaction = transactions.find(t => t.id === id);
+    const transaction = storageService.getTransactionById(id);
     if (transaction) {
       await storageService.updateTransaction(id, {
         isUserConfirmed: true,
@@ -163,25 +138,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Reloads data in the background. Deliberately does NOT set isLoading:
+  // the home screen would unmount and close open modals (e.g. the CSV import
+  // result in SettingsModal would get lost).
   async function refreshData() {
-    setIsLoading(true);
-    try {
-      await categorizationService.initialize(true);
-      await storageService.initialize(true);
-      updateYearData(selectedYear);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  async function loadMockData() {
-    setIsLoading(true);
-    try {
-      await storageService.clearAll();
-      await loadMockDataInternal();
-    } finally {
-      setIsLoading(false);
-    }
+    await categorizationService.initialize(true);
+    await storageService.initialize(true);
+    updateYearData(selectedYear);
   }
 
   async function setReferenceBalance(account: 'volksbank' | 'paypal', amount: number) {
@@ -197,17 +160,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Raw export of all bookings (for support). Works in the browser and on the
+  // phone (share sheet) - it used document/Blob only and crashed on the phone.
   async function exportDatabase() {
-    const data = await storageService.getTransactions();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `spendito_db_export_${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const data = storageService.getTransactions();
+    await backupService.saveFile(
+      JSON.stringify(data, null, 2),
+      `spendito_db_export_${new Date().toISOString().split('T')[0]}.json`,
+      'application/json'
+    );
   }
 
   return (
@@ -226,7 +187,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         updateTransactionCategory,
         confirmTransaction,
         refreshData,
-        loadMockData,
         setReferenceBalance,
         cleanupTransactions,
         exportDatabase,

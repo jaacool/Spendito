@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable, Modal, ScrollView } from 'react-native';
-import { X, Calendar, ChevronRight, Dog, Settings, RefreshCw, Sparkles, SlidersHorizontal, FileText } from 'lucide-react-native';
+import { X, Calendar, ChevronRight, Dog, Settings, Sparkles, SlidersHorizontal, FileText } from 'lucide-react-native';
 
 interface SideMenuProps {
   isOpen: boolean;
@@ -8,7 +8,6 @@ interface SideMenuProps {
   selectedYear: number;
   availableYears: number[];
   onYearSelect: (year: number) => void;
-  onReloadData: () => void;
   onOpenReview: () => void;
   onOpenSettings: () => void;
   onOpenFinanzamt: () => void;
@@ -21,7 +20,6 @@ export function SideMenu({
   selectedYear, 
   availableYears, 
   onYearSelect,
-  onReloadData,
   onOpenReview,
   onOpenSettings,
   onOpenFinanzamt,

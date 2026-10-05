@@ -1,456 +1,222 @@
-import { Router } from 'express';
-import db from './database.js';
-import { v4 as uuidv4 } from 'uuid';
+// File: backend/src/paypal-routes.ts
+/**
+ * PayPal routes.
+ *
+ * The backend is a STATELESS proxy: PayPal tokens and transactions are never
+ * stored server-side. The client keeps its tokens locally and sends the
+ * access token with every sync request (in the body, never in the URL).
+ * Therefore there is no per-user data on the server that could be read by
+ * guessing a user id.
+ *
+ * Legacy note: older clients append a fixed user id to some paths
+ * (e.g. /auth-url/spendito_main_user). That optional segment is accepted
+ * and ignored so old and new client builds keep working during rollout.
+ */
+
+import { Router, type Request, type Response } from 'express';
+import { BACKEND_URL, ALLOWED_ORIGINS, PAYPAL_CLIENT_ID, isAllowedOrigin } from './config.js';
+import { createOAuthState, consumeOAuthState } from './oauth-state.js';
+import {
+  PayPalApiError,
+  exchangeCodeForToken,
+  fetchUserTransactions,
+  isPayPalConfigured,
+  refreshUserToken,
+} from './paypal-client.js';
+import { transformPayPalTransactions } from './paypal-transform.js';
+import { CALLBACK_MESSAGES, sendCallbackErrorPage, sendCallbackSuccessPage } from './paypal-callback-page.js';
 
 const router = Router();
 
-// PayPal API Configuration
-const PAYPAL_API_BASE = 'https://api-m.paypal.com'; // Live API
-const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID || '';
-const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET || '';
-const BACKEND_URL = process.env.RAILWAY_PUBLIC_DOMAIN 
-  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
-  : 'http://localhost:3001';
+const REDIRECT_URI = `${BACKEND_URL}/api/paypal/callback`;
+const MAX_TOKEN_LENGTH = 4096;
+const MAX_HISTORY_MS = 3 * 365 * 24 * 60 * 60 * 1000; // PayPal keeps 3 years of history
 
-interface PayPalToken {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
-  expires_at?: number;
-  refresh_token?: string;
+const ERRORS = {
+  notConfigured: { code: 'PAYPAL_NOT_CONFIGURED', error: 'PayPal ist auf dem Server nicht eingerichtet.' },
+  invalidInput: { code: 'INVALID_INPUT', error: 'Ungültige Anfrage.' },
+  invalidRange: { code: 'INVALID_DATE_RANGE', error: 'Der gewählte Zeitraum ist ungültig.' },
+  noToken: { code: 'PAYPAL_NOT_CONNECTED', error: 'PayPal ist nicht verbunden. Bitte verbinde PayPal erneut.', needsAuth: true },
+  authExpired: { code: 'PAYPAL_AUTH_EXPIRED', error: 'Die PayPal-Anmeldung ist abgelaufen. Bitte verbinde PayPal erneut.', needsAuth: true },
+  upstream: { code: 'PAYPAL_UNAVAILABLE', error: 'PayPal ist gerade nicht erreichbar. Bitte versuche es später erneut.' },
+  internal: { code: 'INTERNAL_ERROR', error: 'Ein interner Fehler ist aufgetreten. Bitte versuche es später erneut.' },
+} as const;
+
+function isNonEmptyString(value: unknown, maxLength: number): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= maxLength;
 }
 
-// No token storage - tokens are managed client-side
-
-/**
- * Exchange authorization code for user access token
- */
-async function exchangeCodeForToken(code: string, redirectUri: string): Promise<PayPalToken> {
-  const auth = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`).toString('base64');
-
-  const response = await fetch(`${PAYPAL_API_BASE}/v1/oauth2/token`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${auth}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: `grant_type=authorization_code&code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent(redirectUri)}`,
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    console.error('[PayPal] Token exchange error:', error);
-    throw new Error(`Token exchange failed: ${response.status}`);
-  }
-
-  const data = await response.json() as PayPalToken;
-  return {
-    ...data,
-    expires_at: Date.now() + (data.expires_in - 60) * 1000,
-  };
+/** Parse an optional ISO date string. Returns undefined if absent, null if invalid. */
+function parseOptionalDate(value: unknown): Date | undefined | null {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'string' || value.length > 40) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
-/**
- * Refresh user access token
- */
-async function refreshUserToken(refreshToken: string): Promise<PayPalToken> {
-  const auth = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`).toString('base64');
-
-  const response = await fetch(`${PAYPAL_API_BASE}/v1/oauth2/token`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${auth}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: `grant_type=refresh_token&refresh_token=${refreshToken}`,
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Token refresh failed: ${error}`);
-  }
-
-  const data = await response.json() as PayPalToken;
-  return {
-    ...data,
-    expires_at: Date.now() + (data.expires_in - 60) * 1000,
-  };
-}
-
-// Token management moved to client-side
-
-/**
- * Fetch transactions from PayPal using user's token
- * Handles the 31-day limit by splitting the request into chunks
- */
-async function fetchUserTransactions(
-  accessToken: string,
-  startDate: string,
-  endDate: string
-): Promise<any[]> {
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  const allTransactions: any[] = [];
-
-  // PayPal API limit: 31 days per request
-  const CHUNK_SIZE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days to be safe
-
-  let currentStart = start;
-  while (currentStart < end) {
-    let currentEnd = new Date(currentStart.getTime() + CHUNK_SIZE_MS);
-    if (currentEnd > end) currentEnd = end;
-
-    const formattedStart = currentStart.toISOString().split('.')[0] + 'Z';
-    const formattedEnd = currentEnd.toISOString().split('.')[0] + 'Z';
-
-    const params = new URLSearchParams({
-      start_date: formattedStart,
-      end_date: formattedEnd,
-      page_size: '100',
-      fields: 'all',
-    });
-
-    const apiUrl = `${PAYPAL_API_BASE}/v1/reporting/transactions?${params.toString()}`;
-    console.log(`[PayPal] Fetching chunk: ${formattedStart} to ${formattedEnd}`);
-
-    const response = await fetch(
-      apiUrl,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    if (!response.ok) {
-      const error = await response.text();
-      console.error(`[PayPal] API Error (${response.status}):`, error);
-      // If one chunk fails, we might still want the others, but for now throw
-      throw new Error(`PayPal API error in chunk ${formattedStart}-${formattedEnd}: ${error}`);
+/** Map an upstream PayPal failure to a generic German response. */
+function sendPayPalError(res: Response, error: unknown, context: string): void {
+  if (error instanceof PayPalApiError) {
+    // For token refresh PayPal answers 400 (invalid_grant) when the refresh token is no longer valid
+    const authFailed =
+      error.status === 401 || error.status === 403 || (context === 'token refresh' && error.status === 400);
+    if (authFailed) {
+      res.status(401).json(ERRORS.authExpired);
+      return;
     }
-
-    const data = await response.json() as any;
-    const chunkTransactions = data.transaction_details || [];
-    allTransactions.push(...chunkTransactions);
-
-    // Next chunk starts where this one ended (add 1 second to avoid duplicates if API is inclusive)
-    currentStart = new Date(currentEnd.getTime() + 1000);
+    res.status(502).json(ERRORS.upstream);
+    return;
   }
-
-  return allTransactions;
+  // Network errors etc. - log only the error name/message, no request data
+  console.error(`[PayPal] ${context} failed:`, error instanceof Error ? error.message : 'unknown error');
+  res.status(500).json(ERRORS.internal);
 }
 
-// No server-side token loading - client manages tokens
-
-// ============================================
-// PayPal Routes
-// ============================================
-
 /**
- * Get PayPal OAuth login URL
+ * Get PayPal OAuth login URL (with a fresh single-use CSRF state nonce).
  */
-router.get('/auth-url/:userId', (req, res) => {
+router.get('/auth-url{/:legacyUserId}', (req: Request, res: Response) => {
   if (!PAYPAL_CLIENT_ID) {
-    return res.status(400).json({ error: 'PayPal nicht konfiguriert' });
+    res.status(503).json(ERRORS.notConfigured);
+    return;
   }
 
-  const { userId } = req.params;
-  const redirectUri = `${BACKEND_URL}/api/paypal/callback`;
-  
-  // PayPal OAuth URL - request reporting scope
-  const scopes = [
-    'openid',
-    'email',
-    'https://uri.paypal.com/services/reporting/search/read'
-  ].join(' ');
+  // Remember the requesting frontend (only if allow-listed) so the callback
+  // posts the token back to exactly that origin.
+  const origin = req.get('origin');
+  const state = createOAuthState(isAllowedOrigin(origin) ? origin : null);
 
   const params = new URLSearchParams({
     client_id: PAYPAL_CLIENT_ID,
     response_type: 'code',
-    scope: scopes,
-    redirect_uri: redirectUri,
-    state: userId, // Pass userId in state to identify user after callback
+    scope: ['openid', 'email', 'https://uri.paypal.com/services/reporting/search/read'].join(' '),
+    redirect_uri: REDIRECT_URI,
+    state,
   });
 
-  const authUrl = `https://www.paypal.com/signin/authorize?${params.toString()}`;
-  
-  res.json({ authUrl, redirectUri });
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    authUrl: `https://www.paypal.com/signin/authorize?${params.toString()}`,
+    redirectUri: REDIRECT_URI,
+    state,
+  });
 });
 
 /**
- * PayPal OAuth callback - exchange code for token
+ * PayPal OAuth callback - verifies state, exchanges code for token and hands
+ * the token to the opener window of an allow-listed origin.
  */
-router.get('/callback', async (req, res) => {
-  const { code, state: userId } = req.query;
+router.get('/callback', async (req: Request, res: Response) => {
+  const { code, state, error } = req.query;
 
-  if (!code || !userId) {
-    return res.status(400).send('Fehlende Parameter');
+  // User cancelled on PayPal (or PayPal reported an error)
+  if (error !== undefined) {
+    consumeOAuthState(state);
+    sendCallbackErrorPage(res, 400, CALLBACK_MESSAGES.cancelled);
+    return;
+  }
+
+  const pending = consumeOAuthState(state);
+  if (!pending || !isNonEmptyString(code, 2048)) {
+    sendCallbackErrorPage(res, 400, CALLBACK_MESSAGES.invalidState);
+    return;
   }
 
   try {
-    const redirectUri = `${BACKEND_URL}/api/paypal/callback`;
-    const token = await exchangeCodeForToken(code as string, redirectUri);
-    
-    // Token is returned to client, not stored server-side
-    // No connection data stored for security - client manages everything
-    console.log(`[PayPal] OAuth successful for user ${userId}, sending token to client`);
-
-    // Redirect to success page or deep link back to app
-    res.send(`
-      <html>
-        <head>
-          <title>PayPal verbunden</title>
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-        </head>
-        <body style="font-family: system-ui, -apple-system, sans-serif; text-align: center; padding: 40px 20px; color: #1f2937;">
-          <div style="max-width: 400px; margin: 0 auto;">
-            <div style="font-size: 64px; margin-bottom: 20px;">✅</div>
-            <h1 style="font-size: 24px; margin-bottom: 16px;">PayPal erfolgreich verbunden!</h1>
-            <p style="font-size: 16px; color: #6b7280; line-height: 1.5; margin-bottom: 30px;">
-              Du kannst dieses Fenster nun schließen und zur App zurückkehren.
-            </p>
-            <button onclick="window.close()" 
-               style="display: block; width: 100%; background: #0070ba; color: white; border: none; padding: 14px 24px; border-radius: 8px; font-weight: 600; font-size: 16px; cursor: pointer; margin-bottom: 12px;">
-              Fenster schließen
-            </button>
-            <a href="spendito://paypal-success" id="app-link" style="display: none; font-size: 14px; color: #0070ba;">Zurück zur App (Mobile)</a>
-          </div>
-          <script>
-            // For Web/Vercel: Send token to opener window
-            if (window.opener) {
-              window.opener.postMessage({ 
-                type: 'PAYPAL_CONNECTED',
-                token: ${JSON.stringify(token)}
-              }, '*');
-            }
-            
-            // For Mobile: Try deep links
-            if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-              document.getElementById('app-link').style.display = 'block';
-              setTimeout(() => {
-                window.location.href = 'spendito://paypal-success';
-              }, 1000);
-            }
-          </script>
-        </body>
-      </html>
-    `);
-  } catch (error: any) {
-    console.error('[PayPal] Callback error:', error);
-    res.status(500).send(`
-      <html>
-        <head><title>Fehler</title></head>
-        <body style="font-family: system-ui; text-align: center; padding: 50px;">
-          <h1>❌ Verbindung fehlgeschlagen</h1>
-          <p>${error.message}</p>
-          <p>Bitte versuche es erneut.</p>
-        </body>
-      </html>
-    `);
-  }
-});
-
-/**
- * Check PayPal API configuration (not connection status - that's client-side)
- */
-router.get('/status/:userId', async (req, res) => {
-  try {
-    if (!PAYPAL_CLIENT_ID || !PAYPAL_CLIENT_SECRET) {
-      return res.json({ 
-        configured: false,
-        message: 'PayPal API nicht konfiguriert' 
-      });
+    const token = await exchangeCodeForToken(code, REDIRECT_URI);
+    const targets = pending.origin ? [pending.origin] : ALLOWED_ORIGINS;
+    if (targets.length === 0) {
+      console.warn('[PayPal] OAuth succeeded but ALLOWED_ORIGINS is empty - token cannot be delivered');
     }
-    
-    res.json({ 
-      configured: true,
-      message: 'PayPal API konfiguriert'
-    });
-  } catch (error: any) {
-    res.json({ 
-      configured: false,
-      message: error.message 
-    });
+    sendCallbackSuccessPage(res, token, state as string, targets);
+  } catch (err) {
+    if (!(err instanceof PayPalApiError)) {
+      console.error('[PayPal] Callback failed:', err instanceof Error ? err.message : 'unknown error');
+    }
+    sendCallbackErrorPage(res, 502, CALLBACK_MESSAGES.exchangeFailed);
   }
 });
 
 /**
- * Refresh user token using refresh_token
+ * Report whether PayPal is configured on the server (connection status itself
+ * is client-side, since the client holds the token).
  */
-router.post('/refresh-token', async (req, res) => {
-  try {
-    const { refreshToken } = req.body;
-    
-    if (!refreshToken) {
-      return res.status(400).json({ error: 'Refresh token required' });
-    }
+router.get('/status{/:legacyUserId}', (_req: Request, res: Response) => {
+  const configured = isPayPalConfigured();
+  res.json({
+    configured,
+    message: configured ? 'PayPal API konfiguriert' : 'PayPal API nicht konfiguriert',
+  });
+});
 
+/**
+ * Refresh an access token using the client's refresh token.
+ */
+router.post('/refresh-token', async (req: Request, res: Response) => {
+  const refreshToken = req.body?.refreshToken;
+  if (!isNonEmptyString(refreshToken, MAX_TOKEN_LENGTH)) {
+    res.status(400).json(ERRORS.invalidInput);
+    return;
+  }
+  if (!isPayPalConfigured()) {
+    res.status(503).json(ERRORS.notConfigured);
+    return;
+  }
+
+  try {
     const newToken = await refreshUserToken(refreshToken);
+    res.set('Cache-Control', 'no-store');
     res.json(newToken);
-  } catch (error: any) {
-    console.error('[PayPal] Token refresh error:', error);
-    res.status(401).json({ error: error.message });
+  } catch (error) {
+    sendPayPalError(res, error, 'token refresh');
   }
 });
 
 /**
- * Sync PayPal transactions - client sends token
- * Backend acts as proxy only, no connection data stored
+ * Sync PayPal transactions - pure proxy, nothing is stored on the server.
  */
-router.post('/sync/:userId', async (req, res) => {
+router.post('/sync{/:legacyUserId}', async (req: Request, res: Response) => {
+  const { accessToken, startDate, endDate } = req.body ?? {};
+
+  if (accessToken === undefined || accessToken === null || accessToken === '') {
+    res.status(401).json(ERRORS.noToken);
+    return;
+  }
+  if (!isNonEmptyString(accessToken, MAX_TOKEN_LENGTH)) {
+    res.status(400).json(ERRORS.invalidInput);
+    return;
+  }
+
+  const parsedStart = parseOptionalDate(startDate);
+  const parsedEnd = parseOptionalDate(endDate);
+  if (parsedStart === null || parsedEnd === null) {
+    res.status(400).json(ERRORS.invalidRange);
+    return;
+  }
+
+  // Clamp to PayPal's 3-year history window and to "now"
+  const now = Date.now();
+  const end = new Date(Math.min(parsedEnd?.getTime() ?? now, now));
+  const start = new Date(Math.max(parsedStart?.getTime() ?? 0, now - MAX_HISTORY_MS));
+  if (start >= end) {
+    res.status(400).json(ERRORS.invalidRange);
+    return;
+  }
+
   try {
-    const { userId } = req.params;
-    const { startDate, endDate, accessToken } = req.body;
+    const rawTransactions = await fetchUserTransactions(accessToken, start, end);
+    const transactions = transformPayPalTransactions(rawTransactions);
+    console.log(`[PayPal Proxy] Sync done: ${rawTransactions.length} fetched, ${transactions.length} returned (not stored)`);
 
-    // Client must provide access token
-    if (!accessToken) {
-      return res.status(401).json({ 
-        error: 'Kein Access Token bereitgestellt',
-        needsAuth: true 
-      });
-    }
-
-    // Default to last 3 years (PayPal API max is 3 years)
-    const end = endDate || new Date().toISOString();
-    // PayPal API requires YYYY-MM-DDTHH:mm:ssZ format
-    const start = startDate || new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000).toISOString().split('.')[0] + 'Z';
-    const endFormatted = end.split('.')[0] + 'Z';
-
-    console.log(`[PayPal Proxy] Sync request for user ${userId}`);
-    console.log(`[PayPal Proxy] Date range: ${start} to ${endFormatted}`);
-    console.log(`[PayPal Proxy] Acting as pure proxy - NO data will be stored`);
-
-    // Fetch transactions from PayPal API
-    const rawTransactions = await fetchUserTransactions(accessToken, start, endFormatted);
-    console.log(`[PayPal Proxy] Fetched ${rawTransactions.length} transactions from PayPal`);
-    
-    // Transform transactions for client (but don't store them)
-    const transformedTransactions = [];
-    
-    for (const tx of rawTransactions) {
-      const txInfo = tx.transaction_info || {};
-      const payerInfo = tx.payer_info || {};
-      
-      const eventCode = txInfo.transaction_event_code || '';
-
-      // Skip currency conversions
-      if (eventCode.startsWith('T11') || eventCode.startsWith('T12')) {
-        continue;
-      }
-
-      const externalId = txInfo.transaction_id || `pp_${Date.now()}_${Math.random()}`;
-      const date = txInfo.transaction_initiation_date || txInfo.transaction_updated_date;
-      const amount = parseFloat(txInfo.transaction_amount?.value || '0');
-      const currency = txInfo.transaction_amount?.currency_code || 'EUR';
-      
-      const counterpartyName = payerInfo.payer_name?.alternate_full_name 
-        || payerInfo.payer_name?.given_name 
-        || txInfo.payee_info?.payee_name?.alternate_full_name
-        || 'PayPal';
-      
-      // Build description
-      let description = txInfo.transaction_subject || txInfo.transaction_note;
-      
-      if (!description || description === eventCode) {
-        const eventCodeDescriptions: Record<string, string> = {
-          'T0000': 'PayPal Zahlung',
-          'T0001': 'PayPal Zahlung erhalten',
-          'T0002': 'PayPal Zahlung gesendet',
-          'T0003': 'PayPal Vorautorisierung',
-          'T0004': 'PayPal Rückerstattung',
-          'T0005': 'PayPal Zahlung',
-          'T0006': 'PayPal Zahlung',
-          'T0007': 'PayPal Website-Zahlung',
-          'T0008': 'PayPal Abo-Zahlung',
-          'T0009': 'PayPal Abo-Zahlung',
-          'T0010': 'PayPal Rückbuchung',
-          'T0011': 'PayPal Rückbuchung',
-          'T0300': 'PayPal Guthaben-Transfer',
-          'T0400': 'PayPal Allgemeine Zahlung',
-          'T0500': 'PayPal Allgemeine Zahlung',
-          'T0700': 'PayPal Allgemeine Gutschrift',
-          'T0800': 'PayPal Bonus/Gutschrift',
-          'T0900': 'PayPal Gebühr',
-          'T1000': 'PayPal Rückbuchung',
-          'T1100': 'PayPal Währungsumrechnung',
-          'T1200': 'PayPal Währungsumrechnung',
-          'T1300': 'PayPal Anpassung',
-          'T1400': 'PayPal Kredit',
-          'T1500': 'PayPal Auszahlung',
-          'T1600': 'PayPal Einzahlung',
-          'T1700': 'PayPal Auszahlung',
-          'T1800': 'PayPal Einzahlung',
-          'T1900': 'PayPal Anpassung',
-          'T2000': 'PayPal Reservierung',
-          'T2100': 'PayPal Reservierung',
-          'T2200': 'PayPal Reservierung',
-          'T9700': 'PayPal Zahlung',
-          'T9800': 'PayPal Zahlung',
-          'T9900': 'PayPal Allgemein',
-        };
-        
-        const codePrefix = eventCode.substring(0, 5);
-        description = eventCodeDescriptions[codePrefix] 
-          || eventCodeDescriptions[eventCode]
-          || (counterpartyName !== 'PayPal' ? `PayPal: ${counterpartyName}` : `PayPal Transaktion`);
-      }
-
-      // Create transaction object for client
-      transformedTransactions.push({
-        id: externalId,
-        external_id: externalId,
-        date: date ? date.split('T')[0] : new Date().toISOString().split('T')[0],
-        value_date: date ? date.split('T')[0] : new Date().toISOString().split('T')[0],
-        amount,
-        currency,
-        counterparty_name: counterpartyName,
-        counterparty_iban: payerInfo.email_address || null,
-        description,
-        booking_text: `PayPal: ${eventCode}`,
-        bank_id: 'paypal',
-        account_number: 'paypal',
-      });
-    }
-
-    console.log(`[PayPal Proxy] Transformed ${transformedTransactions.length} transactions`);
-    console.log(`[PayPal Proxy] Sending to client - NO storage on server`);
-
-    // Return transactions directly to client - NO DATABASE STORAGE
+    res.set('Cache-Control', 'no-store');
     res.json({
       success: true,
       transactionsFound: rawTransactions.length,
-      transactionsAdded: transformedTransactions.length,
-      transactions: transformedTransactions,
+      transactionsAdded: transactions.length,
+      transactions,
     });
-  } catch (error: any) {
-    console.error('[PayPal] Sync error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-/**
- * Disconnect PayPal - delete transactions only
- */
-router.delete('/disconnect/:userId', (req, res) => {
-  try {
-    const { userId } = req.params;
-    
-    // Token is client-side, just remove DB data
-    const connection = db.prepare(`
-      SELECT id FROM bank_connections WHERE user_id = ? AND bank_id = 'paypal'
-    `).get(userId) as any;
-
-    if (connection) {
-      db.prepare('DELETE FROM transactions WHERE account_id IN (SELECT id FROM bank_accounts WHERE connection_id = ?)').run(connection.id);
-      db.prepare('DELETE FROM bank_accounts WHERE connection_id = ?').run(connection.id);
-      db.prepare('DELETE FROM sync_log WHERE connection_id = ?').run(connection.id);
-      db.prepare('DELETE FROM bank_connections WHERE id = ?').run(connection.id);
-    }
-
-    res.json({ success: true });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    sendPayPalError(res, error, 'sync');
   }
 });
 

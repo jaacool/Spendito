@@ -1,9 +1,12 @@
-import * as FileSystem from 'expo-file-system';
+// File: src/services/finanzamtExport.ts
+// Expo SDK 54 moved the classic API (cacheDirectory, EncodingType, ...) to "legacy"
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
-import { Transaction, YearSummary, CATEGORY_INFO, Category } from '../types';
+import { Transaction, YearSummary } from '../types';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
+import { isCountedInTotals, getCategoryLabel } from './transactionFilters';
 
 interface ExportOptions {
   year: number;
@@ -67,18 +70,20 @@ export class FinanzamtExportService {
   }
 
   private async exportAsHTMLWeb(html: string, options: ExportOptions): Promise<void> {
-    const fileName = `Finanzamt_Export_${options.organizationName.replace(/\s+/g, '_')}_${options.year}.html`;
+    const fileName = this.buildFileName(options);
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = fileName;
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
     URL.revokeObjectURL(url);
   }
 
   private async exportAsHTMLNative(html: string, options: ExportOptions): Promise<void> {
-    const fileName = `Finanzamt_Export_${options.organizationName.replace(/\s+/g, '_')}_${options.year}.html`;
+    const fileName = this.buildFileName(options);
     const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
     
     await FileSystem.writeAsStringAsync(fileUri, html, {
@@ -99,7 +104,9 @@ export class FinanzamtExportService {
   }
 
   private generateHTML(options: ExportOptions): string {
-    const { year, transactions, yearSummary, organizationName } = options;
+    const { year, transactions, yearSummary } = options;
+    // User input - must be escaped before it goes into HTML
+    const organizationName = this.escapeHtml(options.organizationName);
     const exportDate = format(new Date(), 'dd.MM.yyyy', { locale: de });
 
     return `
@@ -350,7 +357,7 @@ export class FinanzamtExportService {
           .map(cat => `
             <tr>
               <td>
-                <span class="category-badge">${CATEGORY_INFO[cat.category].labelDe}</span>
+                <span class="category-badge">${getCategoryLabel(cat.category)}</span>
               </td>
               <td class="amount">${cat.count}</td>
               <td class="amount positive">${this.formatCurrency(cat.total)}</td>
@@ -385,7 +392,7 @@ export class FinanzamtExportService {
           .map(cat => `
             <tr>
               <td>
-                <span class="category-badge">${CATEGORY_INFO[cat.category].labelDe}</span>
+                <span class="category-badge">${getCategoryLabel(cat.category)}</span>
               </td>
               <td class="amount">${cat.count}</td>
               <td class="amount negative">${this.formatCurrency(Math.abs(cat.total))}</td>
@@ -419,7 +426,7 @@ export class FinanzamtExportService {
   }
 
   private generateTransactionTables(transactions: Transaction[]): string {
-    const filteredTransactions = transactions.filter(t => !t.isDuplicate && !t.isGuthabenTransfer);
+    const filteredTransactions = transactions.filter(isCountedInTotals);
     const sortedTransactions = [...filteredTransactions].sort((a, b) => 
       new Date(a.date).getTime() - new Date(b.date).getTime()
     );
@@ -443,7 +450,7 @@ export class FinanzamtExportService {
           ${incomeTransactions.map(t => `
             <tr>
               <td>${format(new Date(t.date), 'dd.MM.yyyy', { locale: de })}</td>
-              <td><span class="category-badge">${CATEGORY_INFO[t.category].labelDe}</span></td>
+              <td><span class="category-badge">${getCategoryLabel(t.category)}</span></td>
               <td>${this.escapeHtml(t.description)}</td>
               <td>${this.escapeHtml(t.counterparty)}</td>
               <td class="amount positive">${this.formatCurrency(t.amount)}</td>
@@ -471,7 +478,7 @@ export class FinanzamtExportService {
           ${expenseTransactions.map(t => `
             <tr>
               <td>${format(new Date(t.date), 'dd.MM.yyyy', { locale: de })}</td>
-              <td><span class="category-badge">${CATEGORY_INFO[t.category].labelDe}</span></td>
+              <td><span class="category-badge">${getCategoryLabel(t.category)}</span></td>
               <td>${this.escapeHtml(t.description)}</td>
               <td>${this.escapeHtml(t.counterparty)}</td>
               <td class="amount negative">${this.formatCurrency(Math.abs(t.amount))}</td>
@@ -486,6 +493,12 @@ export class FinanzamtExportService {
     `;
   }
 
+  // Only safe characters in file names (the organization name is user input)
+  private buildFileName(options: ExportOptions): string {
+    const safeName = options.organizationName.replace(/[^a-zA-Z0-9äöüÄÖÜß_-]+/g, '_');
+    return `Finanzamt_Export_${safeName}_${options.year}.html`;
+  }
+
   private formatCurrency(amount: number): string {
     return new Intl.NumberFormat('de-DE', {
       style: 'currency',
@@ -493,7 +506,7 @@ export class FinanzamtExportService {
     }).format(amount);
   }
 
-  private escapeHtml(text: string): string {
+  private escapeHtml(text: string | undefined | null): string {
     const map: Record<string, string> = {
       '&': '&amp;',
       '<': '&lt;',
@@ -501,7 +514,7 @@ export class FinanzamtExportService {
       '"': '&quot;',
       "'": '&#039;',
     };
-    return text.replace(/[&<>"']/g, m => map[m]);
+    return (text ?? '').replace(/[&<>"']/g, m => map[m]);
   }
 }
 

@@ -45,9 +45,14 @@ export interface Transaction {
   isDuplicate?: boolean; // True if this is a duplicate (hidden from totals)
   duplicateReason?: string; // Why it was marked as duplicate
   linkedPayPalRef?: string; // Reference to linked PayPal transaction
+  // Display info of the PayPal payment a bank->PayPal transfer funded.
+  // Kept separate so the original bank description is never overwritten.
+  linkedPayPalInfo?: {
+    counterparty: string;
+    description: string;
+  };
   // PayPal Guthaben-Transfer tracking
   isGuthabenTransfer?: boolean; // True if this is a PayPal Guthaben-Transfer
-  isDemo?: boolean; // True if this is demo data
   linkedPaymentId?: string; // ID of the actual payment this transfer funded
   originalPaymentInfo?: { // Preserved payment info when marking as duplicate
     description: string;

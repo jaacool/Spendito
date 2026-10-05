@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal, TouchableOpacity } from 'react-native';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
@@ -7,11 +7,14 @@ import { Transaction, Category, CATEGORY_INFO, INCOME_CATEGORIES, EXPENSE_CATEGO
 
 interface TransactionItemProps {
   transaction: Transaction;
-  onCategoryChange: (category: Category) => void;
-  onConfirm?: () => void;
+  onCategoryChange: (category: Category) => void | Promise<void>;
+  onConfirm?: () => void | Promise<void>;
+  // Called with a German message when saving failed
+  onError?: (message: string) => void;
 }
 
-export function TransactionItem({ transaction, onCategoryChange, onConfirm }: TransactionItemProps) {
+// memo: the list can contain thousands of bookings - only changed rows re-render
+export const TransactionItem = memo(function TransactionItem({ transaction, onCategoryChange, onConfirm, onError }: TransactionItemProps) {
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   
   // Determine verification status
@@ -26,7 +29,19 @@ export function TransactionItem({ transaction, onCategoryChange, onConfirm }: Tr
   const isTransfer = transaction.type === 'transfer' || transaction.category === 'transfer';
   const isDuplicate = transaction.isDuplicate;
   const isLinked = !!transaction.linkedTransactionId;
+  // Transfers can go in both directions - their sign comes from the amount
+  const isPositive = isTransfer ? transaction.amount >= 0 : isIncome;
   
+  // Run a save action and report errors instead of failing silently
+  const runSafely = async (action: () => void | Promise<void>) => {
+    try {
+      await action();
+    } catch (error) {
+      console.error('[TransactionItem] Save failed:', error);
+      onError?.('Die Änderung konnte nicht gespeichert werden. Bitte erneut versuchen.');
+    }
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('de-DE', {
       style: 'currency',
@@ -76,6 +91,11 @@ export function TransactionItem({ transaction, onCategoryChange, onConfirm }: Tr
               <Text style={[styles.counterparty, isDuplicate && styles.duplicateText]} numberOfLines={1}>
                 {transaction.counterparty}
               </Text>
+              {transaction.linkedPayPalInfo && (
+                <Text style={[styles.counterparty, styles.duplicateText]} numberOfLines={1}>
+                  {' · PayPal: '}{transaction.linkedPayPalInfo.counterparty}
+                </Text>
+              )}
               {isDuplicate && !isLinked && (
                 <View style={styles.duplicateBadge}>
                   <Link2 size={10} color="#9ca3af" />
@@ -115,10 +135,10 @@ export function TransactionItem({ transaction, onCategoryChange, onConfirm }: Tr
           <View style={styles.amountRow}>
             <Text style={[
               styles.amount, 
-              { color: isIncome ? '#22c55e' : '#ef4444' },
+              { color: isPositive ? '#22c55e' : '#ef4444' },
               isDuplicate && styles.duplicateAmount
             ]}>
-              {isIncome ? '+' : '-'}{formatCurrency(transaction.amount)}
+              {isPositive ? '+' : '-'}{formatCurrency(transaction.amount)}
             </Text>
             {isUserConfirmed && (
               <CheckCircle2 size={14} color="#22c55e" style={styles.verifiedIcon} />
@@ -129,7 +149,8 @@ export function TransactionItem({ transaction, onCategoryChange, onConfirm }: Tr
         </View>
       </Pressable>
 
-      {/* Category Picker Modal */}
+      {/* Category Picker Modal - only mounted while open (one per row was expensive) */}
+      {showCategoryPicker && (
       <Modal
         visible={showCategoryPicker}
         transparent
@@ -153,8 +174,8 @@ export function TransactionItem({ transaction, onCategoryChange, onConfirm }: Tr
                   key={cat}
                   style={[styles.categoryOption, isSelected && styles.categoryOptionSelected]}
                   onPress={() => {
-                    onCategoryChange(cat);
                     setShowCategoryPicker(false);
+                    runSafely(() => onCategoryChange(cat));
                   }}
                 >
                   <View style={[styles.categoryDot, { backgroundColor: catInfo.color }]} />
@@ -170,8 +191,8 @@ export function TransactionItem({ transaction, onCategoryChange, onConfirm }: Tr
                 <TouchableOpacity
                   style={styles.confirmButton}
                   onPress={() => {
-                    onConfirm();
                     setShowCategoryPicker(false);
+                    runSafely(onConfirm);
                   }}
                 >
                   <CheckCircle2 size={18} color="#22c55e" />
@@ -188,9 +209,10 @@ export function TransactionItem({ transaction, onCategoryChange, onConfirm }: Tr
           </View>
         </Pressable>
       </Modal>
+      )}
     </>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

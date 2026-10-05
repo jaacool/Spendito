@@ -1,13 +1,24 @@
+// File: src/services/paypalAuth.ts
 /**
  * PayPal OAuth Client-Side Service
- * 
- * Manages PayPal OAuth tokens in browser localStorage.
- * No server-side token storage - everything is client-side.
+ *
+ * Manages PayPal OAuth tokens on the client (AsyncStorage = localStorage on web).
+ * The backend is a stateless proxy and never stores tokens or transactions.
+ *
+ * Login flow (web):
+ * 1. Backend issues an auth URL with a random single-use `state` nonce.
+ * 2. PayPal popup -> backend callback page, which posts the token ONLY to
+ *    allow-listed frontend origins.
+ * 3. We accept the message only if it comes from the backend origin, from the
+ *    popup we opened, has the expected shape and carries our `state`.
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const BACKEND_URL = 'https://spendito-production.up.railway.app';
+export const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://spendito-production.up.railway.app';
+
+const LOCAL_DEV_BACKEND_ORIGIN = 'http://localhost:3001';
+const OAUTH_TIMEOUT_MS = 5 * 60 * 1000;
 
 const STORAGE_KEYS = {
   PAYPAL_TOKEN: 'paypal_access_token',
@@ -23,9 +34,51 @@ export interface PayPalToken {
   refresh_token?: string;
 }
 
-class PayPalAuthService {
-  private userId = 'spendito_main_user';
+export type PayPalAuthErrorCode = 'NOT_CONNECTED' | 'SESSION_EXPIRED' | 'CONNECT_FAILED' | 'SYNC_FAILED';
 
+/** Error with a stable code, so callers don't have to match on message text. */
+export class PayPalAuthError extends Error {
+  constructor(public readonly code: PayPalAuthErrorCode, message: string) {
+    super(message);
+    this.name = 'PayPalAuthError';
+  }
+}
+
+/** Origins from which the OAuth callback page may post messages. */
+function getTrustedCallbackOrigins(): string[] {
+  const origins: string[] = [];
+  try {
+    origins.push(new URL(BACKEND_URL).origin);
+  } catch {
+    // invalid BACKEND_URL - no origin trusted
+  }
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    origins.push(LOCAL_DEV_BACKEND_ORIGIN);
+  }
+  return origins;
+}
+
+function isValidTokenPayload(token: any): token is PayPalToken {
+  return (
+    !!token &&
+    typeof token === 'object' &&
+    typeof token.access_token === 'string' &&
+    token.access_token.length > 0 &&
+    typeof token.expires_in === 'number' &&
+    Number.isFinite(token.expires_in) &&
+    (token.refresh_token === undefined || typeof token.refresh_token === 'string')
+  );
+}
+
+async function readJson(response: Response): Promise<any> {
+  try {
+    return await response.json();
+  } catch {
+    return {};
+  }
+}
+
+class PayPalAuthService {
   /**
    * Check if user is connected (has valid token)
    */
@@ -38,145 +91,155 @@ class PayPalAuthService {
    * Get PayPal OAuth URL and open popup
    */
   async connectPayPal(): Promise<void> {
+    let response: Response;
     try {
-      // Get auth URL from backend
-      const response = await fetch(`${BACKEND_URL}/api/paypal/auth-url/${this.userId}`);
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to get auth URL');
-      }
-
-      // Open OAuth popup
-      const width = 500;
-      const height = 700;
-      const left = window.screen.width / 2 - width / 2;
-      const top = window.screen.height / 2 - height / 2;
-
-      const popup = window.open(
-        data.authUrl,
-        'PayPal Login',
-        `width=${width},height=${height},left=${left},top=${top}`
-      );
-
-      // Listen for token from callback page
-      return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          window.removeEventListener('message', messageHandler);
-          reject(new Error('OAuth timeout - Fenster wurde geschlossen'));
-        }, 5 * 60 * 1000); // 5 min timeout
-
-        const messageHandler = async (event: MessageEvent) => {
-          // Security: Check origin
-          if (!event.origin.includes('railway.app') && !event.origin.includes('localhost')) {
-            return;
-          }
-
-          if (event.data.type === 'PAYPAL_CONNECTED' && event.data.token) {
-            clearTimeout(timeout);
-            window.removeEventListener('message', messageHandler);
-            
-            // Store token client-side
-            await this.storeToken(event.data.token);
-            
-            if (popup) popup.close();
-            resolve();
-          }
-        };
-
-        window.addEventListener('message', messageHandler);
-      });
-    } catch (error: any) {
-      console.error('[PayPal Auth] Connection error:', error);
-      throw error;
+      response = await fetch(`${BACKEND_URL}/api/paypal/auth-url`);
+    } catch {
+      throw new PayPalAuthError('CONNECT_FAILED', 'Der Spendito-Server ist nicht erreichbar. Bitte prüfe deine Internetverbindung.');
     }
+    const data = await readJson(response);
+
+    if (!response.ok || typeof data.authUrl !== 'string' || typeof data.state !== 'string') {
+      throw new PayPalAuthError('CONNECT_FAILED', 'Die PayPal-Anmeldung konnte nicht gestartet werden. Bitte versuche es später erneut.');
+    }
+
+    const expectedState: string = data.state;
+    const trustedOrigins = getTrustedCallbackOrigins();
+
+    // Open OAuth popup
+    const width = 500;
+    const height = 700;
+    const left = window.screen.width / 2 - width / 2;
+    const top = window.screen.height / 2 - height / 2;
+
+    const popup = window.open(
+      data.authUrl,
+      'PayPal Login',
+      `width=${width},height=${height},left=${left},top=${top}`
+    );
+
+    if (!popup) {
+      throw new PayPalAuthError('CONNECT_FAILED', 'Das PayPal-Fenster wurde blockiert. Bitte erlaube Pop-ups für Spendito und versuche es erneut.');
+    }
+
+    // Listen for token from callback page
+    return new Promise((resolve, reject) => {
+      const cleanup = () => {
+        clearTimeout(timeout);
+        window.removeEventListener('message', messageHandler);
+      };
+
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new PayPalAuthError('CONNECT_FAILED', 'Die PayPal-Anmeldung hat zu lange gedauert. Bitte versuche es erneut.'));
+      }, OAUTH_TIMEOUT_MS);
+
+      const messageHandler = async (event: MessageEvent) => {
+        // Security: exact origin match + must come from the popup we opened
+        if (!trustedOrigins.includes(event.origin)) return;
+        if (event.source !== popup) return;
+
+        const msg = event.data;
+        if (!msg || typeof msg !== 'object' || msg.type !== 'PAYPAL_CONNECTED') return;
+        if (msg.state !== expectedState) return; // CSRF: not the login we started
+        if (!isValidTokenPayload(msg.token)) return;
+
+        cleanup();
+        try {
+          await this.storeToken(msg.token);
+          popup.close();
+          resolve();
+        } catch {
+          reject(new PayPalAuthError('CONNECT_FAILED', 'Die PayPal-Anmeldung konnte nicht gespeichert werden.'));
+        }
+      };
+
+      window.addEventListener('message', messageHandler);
+    });
   }
 
   /**
-   * Store token in localStorage
+   * Store token locally
    */
   private async storeToken(token: PayPalToken): Promise<void> {
-    console.log('[PayPal Auth] Storing token, expires_in:', token.expires_in);
     await AsyncStorage.setItem(STORAGE_KEYS.PAYPAL_TOKEN, token.access_token);
     await AsyncStorage.setItem(
       STORAGE_KEYS.PAYPAL_TOKEN_EXPIRY,
       (Date.now() + (token.expires_in - 60) * 1000).toString()
     );
-    
+
     if (token.refresh_token) {
       await AsyncStorage.setItem(STORAGE_KEYS.PAYPAL_REFRESH_TOKEN, token.refresh_token);
-      console.log('[PayPal Auth] Refresh token stored');
     }
-    console.log('[PayPal Auth] Token stored successfully');
   }
 
   /**
    * Get valid access token (refresh if needed)
    */
   async getValidToken(): Promise<string | null> {
-    console.log('[PayPal Auth] Getting valid token...');
     const token = await AsyncStorage.getItem(STORAGE_KEYS.PAYPAL_TOKEN);
     const expiryStr = await AsyncStorage.getItem(STORAGE_KEYS.PAYPAL_TOKEN_EXPIRY);
-    
-    console.log('[PayPal Auth] Token found:', !!token, 'Expiry found:', !!expiryStr);
-    
+
     if (!token || !expiryStr) {
-      console.log('[PayPal Auth] No token or expiry found in storage');
       return null;
     }
 
-    const expiry = parseInt(expiryStr, 10);
-    const now = Date.now();
-    const timeUntilExpiry = expiry - now;
-    
-    console.log('[PayPal Auth] Token expiry check - Now:', now, 'Expiry:', expiry, 'Time until expiry (ms):', timeUntilExpiry);
-    
     // Token still valid
-    if (now < expiry) {
-      console.log('[PayPal Auth] Token is still valid, returning it');
+    const expiry = parseInt(expiryStr, 10);
+    if (Date.now() < expiry) {
       return token;
     }
 
-    console.log('[PayPal Auth] Token expired, attempting refresh...');
     // Try to refresh
     const refreshToken = await AsyncStorage.getItem(STORAGE_KEYS.PAYPAL_REFRESH_TOKEN);
-    if (refreshToken) {
-      try {
-        console.log('[PayPal Auth] Refresh token found, refreshing...');
-        const newToken = await this.refreshToken(refreshToken);
-        await this.storeToken(newToken);
-        console.log('[PayPal Auth] Token refreshed successfully');
-        return newToken.access_token;
-      } catch (error) {
-        console.error('[PayPal Auth] Token refresh failed:', error);
-        await this.disconnect();
-        return null;
-      }
+    if (!refreshToken) {
+      return null;
     }
 
-    console.log('[PayPal Auth] No refresh token available');
-    return null;
+    const result = await this.refreshToken(refreshToken);
+    if (result === 'invalid') {
+      // PayPal rejected the refresh token -> the connection is really gone
+      await this.disconnect();
+      return null;
+    }
+    if (result === 'unavailable') {
+      // Temporary problem (network/server) - keep the stored connection
+      return null;
+    }
+
+    await this.storeToken(result);
+    return result.access_token;
   }
 
   /**
-   * Refresh access token using refresh_token
+   * Refresh access token using refresh_token.
+   * Returns 'invalid' if PayPal rejected it, 'unavailable' on temporary errors.
    */
-  private async refreshToken(refreshToken: string): Promise<PayPalToken> {
-    const response = await fetch(`${BACKEND_URL}/api/paypal/refresh-token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
-    });
-
-    if (!response.ok) {
-      throw new Error('Token refresh failed');
+  private async refreshToken(refreshToken: string): Promise<PayPalToken | 'invalid' | 'unavailable'> {
+    let response: Response;
+    try {
+      response = await fetch(`${BACKEND_URL}/api/paypal/refresh-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+    } catch {
+      return 'unavailable';
     }
 
-    return response.json();
+    if (response.status === 401 || response.status === 400) {
+      return 'invalid';
+    }
+    if (!response.ok) {
+      return 'unavailable';
+    }
+
+    const data = await readJson(response);
+    return isValidTokenPayload(data) ? data : 'unavailable';
   }
 
   /**
-   * Disconnect PayPal (clear local tokens)
+   * Disconnect PayPal (clear local tokens - nothing is stored server-side)
    */
   async disconnect(): Promise<void> {
     await AsyncStorage.multiRemove([
@@ -184,15 +247,6 @@ class PayPalAuthService {
       STORAGE_KEYS.PAYPAL_REFRESH_TOKEN,
       STORAGE_KEYS.PAYPAL_TOKEN_EXPIRY,
     ]);
-
-    // Also delete server-side data
-    try {
-      await fetch(`${BACKEND_URL}/api/paypal/disconnect/${this.userId}`, {
-        method: 'DELETE',
-      });
-    } catch {
-      // Ignore errors
-    }
   }
 
   /**
@@ -206,31 +260,36 @@ class PayPalAuthService {
     transactions?: any[];
   }> {
     const accessToken = await this.getValidToken();
-    
+
     if (!accessToken) {
-      throw new Error('Nicht verbunden - bitte zuerst anmelden');
+      throw new PayPalAuthError('NOT_CONNECTED', 'PayPal ist nicht verbunden. Bitte verbinde PayPal zuerst.');
     }
 
-    console.log('[PayPal Auth] Syncing via proxy - transactions will NOT be stored on server');
-    
-    const response = await fetch(`${BACKEND_URL}/api/paypal/sync/${this.userId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ startDate, endDate, accessToken }),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${BACKEND_URL}/api/paypal/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ startDate, endDate, accessToken }),
+      });
+    } catch {
+      throw new PayPalAuthError('SYNC_FAILED', 'Der Spendito-Server ist nicht erreichbar. Bitte prüfe deine Internetverbindung.');
+    }
 
-    const data = await response.json();
+    const data = await readJson(response);
 
     if (!response.ok) {
       if (data.needsAuth) {
         await this.disconnect();
-        throw new Error('Session abgelaufen - bitte neu anmelden');
+        throw new PayPalAuthError('SESSION_EXPIRED', 'Die PayPal-Anmeldung ist abgelaufen. Bitte verbinde PayPal erneut.');
       }
-      throw new Error(data.error || 'Sync failed');
+      // Backend only returns generic German messages; fall back to our own
+      const message = typeof data.error === 'string' && data.error
+        ? data.error
+        : 'PayPal-Synchronisierung fehlgeschlagen. Bitte versuche es später erneut.';
+      throw new PayPalAuthError('SYNC_FAILED', message);
     }
 
-    console.log(`[PayPal Auth] Received ${data.transactions?.length || 0} transactions from proxy`);
-    
     return data;
   }
 }

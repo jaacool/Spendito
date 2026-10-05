@@ -8,11 +8,12 @@ import {
   ScrollView,
   ActivityIndicator,
   TextInput,
-  Alert,
 } from 'react-native';
 import { X, Download, FileText, Calendar } from 'lucide-react-native';
 import { useApp } from '../context/AppContext';
 import { finanzamtExportService } from '../services/finanzamtExport';
+import { isCountedInTotals } from '../services/transactionFilters';
+import { showMessage } from '../services/dialogs';
 
 interface FinanzamtModalProps {
   visible: boolean;
@@ -27,12 +28,12 @@ export function FinanzamtModal({ visible, onClose }: FinanzamtModalProps) {
 
   const handleExport = async () => {
     if (!yearSummary) {
-      Alert.alert('Fehler', 'Keine Daten für das ausgewählte Jahr verfügbar.');
+      showMessage('Fehler', 'Keine Daten für das ausgewählte Jahr verfügbar.');
       return;
     }
 
     if (!organizationName.trim()) {
-      Alert.alert('Fehler', 'Bitte geben Sie einen Vereinsnamen ein.');
+      showMessage('Fehler', 'Bitte geben Sie einen Vereinsnamen ein.');
       return;
     }
 
@@ -46,20 +47,17 @@ export function FinanzamtModal({ visible, onClose }: FinanzamtModalProps) {
         format: exportFormat,
       });
       
-      Alert.alert(
-        'Export erfolgreich',
-        'Der Finanzamt-Export wurde erstellt und kann jetzt geteilt werden.',
-        [{ text: 'OK', onPress: onClose }]
-      );
+      await showMessage('Export erfolgreich', 'Der Finanzamt-Export wurde erstellt und kann jetzt geteilt werden.');
+      onClose();
     } catch (error) {
-      Alert.alert('Fehler', 'Export fehlgeschlagen. Bitte versuchen Sie es erneut.');
+      showMessage('Fehler', 'Export fehlgeschlagen. Bitte versuchen Sie es erneut.');
       console.error('Export error:', error);
     } finally {
       setIsExporting(false);
     }
   };
 
-  const yearTransactions = transactions.filter(t => !t.isDuplicate && !t.isGuthabenTransfer);
+  const yearTransactions = transactions.filter(isCountedInTotals);
   const incomeCount = yearTransactions.filter(t => t.type === 'income').length;
   const expenseCount = yearTransactions.filter(t => t.type === 'expense').length;
 
